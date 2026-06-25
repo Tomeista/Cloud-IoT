@@ -1,0 +1,12 @@
+apiVersion: v2
+name: iot-sensor-monitoring
+description: IoT Sensor Monitoring Streaming Pipeline on Kubernetes
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - iot
+  - streaming
+  - kafka
+  - flink
+  - kubernetes

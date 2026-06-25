@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-credentials
+  namespace: { { .Values.namespace } }
+type: Opaque
+stringData:
+  MINIO_ROOT_USER: { { .Values.minio.credentials.rootUser | quote } }
+  MINIO_ROOT_PASSWORD: { { .Values.minio.credentials.rootPassword | quote } }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: { { .Values.namespace } }
+spec:
+  serviceName: minio
+  replicas: { { .Values.minio.replicas } }
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: "{{ .Values.minio.image }}:{{ .Values.minio.tag }}"
+          args: ["server", "/data", "--console-address", ":9001"]
+          ports:
+            - containerPort: 9000
+              name: api
+            - containerPort: 9001
+              name: console
+          envFrom:
+            - secretRef:
+                name: minio-credentials
+          resources: { { - toYaml .Values.minio.resources | nindent 12 } }
+          volumeMounts:
+            - name: minio-data
+              mountPath: /data
+  volumeClaimTemplates:
+    - metadata:
+        name: minio-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: { { .Values.minio.storage } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: { { .Values.namespace } }
+spec:
+  ports:
+    - port: 9000
+      targetPort: 9000
+      name: api
+    - port: 9001
+      targetPort: 9001
+      name: console
+  selector:
+    app: minio

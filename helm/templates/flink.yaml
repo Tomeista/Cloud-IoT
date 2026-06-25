@@ -1,0 +1,113 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flink-config
+  namespace: { { .Values.namespace } }
+data:
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  KAFKA_EVENTS_TOPIC: { { .Values.kafka_topics.events | quote } }
+  KAFKA_AGGREGATES_TOPIC: { { .Values.kafka_topics.aggregates | quote } }
+  KAFKA_ALERTS_TOPIC: { { .Values.kafka_topics.alerts | quote } }
+  METADATA_PATH: "/opt/flink/job/metadata.json"
+  flink-conf.yaml: |
+    jobmanager.rpc.address: flink-jobmanager
+    jobmanager.rpc.port: 6123
+    jobmanager.memory.process.size: 1024m
+    taskmanager.memory.process.size: 1024m
+    taskmanager.numberOfTaskSlots: {{ .Values.flink.taskmanager.taskSlots }}
+    parallelism.default: 2
+    rest.port: 8081
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-jobmanager
+  namespace: { { .Values.namespace } }
+spec:
+  replicas: { { .Values.flink.jobmanager.replicas } }
+  selector:
+    matchLabels:
+      app: flink
+      component: jobmanager
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: jobmanager
+    spec:
+      containers:
+        - name: jobmanager
+          image: "{{ .Values.imageRegistry }}/{{ .Values.flink.image }}:{{ .Values.flink.tag }}"
+          imagePullPolicy: { { .Values.imagePullPolicy } }
+          args: ["jobmanager"]
+          ports:
+            - containerPort: 6123
+              name: rpc
+            - containerPort: 8081
+              name: webui
+          envFrom:
+            - configMapRef:
+                name: flink-config
+          resources:
+            { { - toYaml .Values.flink.jobmanager.resources | nindent 12 } }
+          volumeMounts:
+            - name: flink-config-volume
+              mountPath: /opt/flink/conf/flink-conf.yaml
+              subPath: flink-conf.yaml
+      volumes:
+        - name: flink-config-volume
+          configMap:
+            name: flink-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-taskmanager
+  namespace: { { .Values.namespace } }
+spec:
+  replicas: { { .Values.flink.taskmanager.replicas } }
+  selector:
+    matchLabels:
+      app: flink
+      component: taskmanager
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: taskmanager
+    spec:
+      containers:
+        - name: taskmanager
+          image: "{{ .Values.imageRegistry }}/{{ .Values.flink.image }}:{{ .Values.flink.tag }}"
+          imagePullPolicy: { { .Values.imagePullPolicy } }
+          args: ["taskmanager"]
+          envFrom:
+            - configMapRef:
+                name: flink-config
+          resources:
+            { { - toYaml .Values.flink.taskmanager.resources | nindent 12 } }
+          volumeMounts:
+            - name: flink-config-volume
+              mountPath: /opt/flink/conf/flink-conf.yaml
+              subPath: flink-conf.yaml
+      volumes:
+        - name: flink-config-volume
+          configMap:
+            name: flink-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flink-jobmanager
+  namespace: { { .Values.namespace } }
+spec:
+  ports:
+    - port: 6123
+      targetPort: 6123
+      name: rpc
+    - port: 8081
+      targetPort: 8081
+      name: webui
+  selector:
+    app: flink
+    component: jobmanager

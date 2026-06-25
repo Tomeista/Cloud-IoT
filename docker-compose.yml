@@ -1,0 +1,115 @@
+version: "3.9"
+
+services:
+  # --- Infrastructure ---
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.1
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.1
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+      - "29092:29092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio-data:/data
+
+  # --- Application ---
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      APP_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      APP_KAFKA_EVENTS_TOPIC: sensor-events
+      APP_KAFKA_AGGREGATES_TOPIC: sensor-aggregates
+      APP_KAFKA_ALERTS_TOPIC: sensor-alerts
+      APP_MINIO_ENDPOINT: minio:9000
+      APP_MINIO_ACCESS_KEY: minioadmin
+      APP_MINIO_SECRET_KEY: minioadmin
+      APP_MINIO_BUCKET: iot-lakehouse
+    depends_on:
+      - kafka
+      - minio
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+  # --- Stream Processing ---
+
+  flink-jobmanager:
+    build: ./flink-job
+    command: jobmanager
+    ports:
+      - "8081:8081"
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_EVENTS_TOPIC: sensor-events
+      KAFKA_AGGREGATES_TOPIC: sensor-aggregates
+      KAFKA_ALERTS_TOPIC: sensor-alerts
+      METADATA_PATH: /opt/flink/job/metadata.json
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 2
+        parallelism.default: 2
+    depends_on:
+      - kafka
+
+  flink-taskmanager:
+    build: ./flink-job
+    command: taskmanager
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_EVENTS_TOPIC: sensor-events
+      KAFKA_AGGREGATES_TOPIC: sensor-aggregates
+      KAFKA_ALERTS_TOPIC: sensor-alerts
+      METADATA_PATH: /opt/flink/job/metadata.json
+      FLINK_PROPERTIES: |
+        jobmanager.rpc.address: flink-jobmanager
+        taskmanager.numberOfTaskSlots: 2
+        parallelism.default: 2
+    depends_on:
+      - flink-jobmanager
+    deploy:
+      replicas: 2
+
+volumes:
+  zookeeper-data:
+  kafka-data:
+  minio-data:
