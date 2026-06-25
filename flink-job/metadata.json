@@ -1,0 +1,18 @@
+{
+  "sensors": {
+    "sensor-temp-0000": {"sensor_type": "temperature", "location": "Hall-A1", "group": "Production", "description": "Main hall temperature sensor", "warning_threshold": 60.0, "critical_threshold": 70.0},
+    "sensor-temp-0001": {"sensor_type": "temperature", "location": "Hall-A2", "group": "Production", "description": "Secondary hall temperature", "warning_threshold": 60.0, "critical_threshold": 70.0},
+    "sensor-pres-0002": {"sensor_type": "pressure", "location": "Hall-B1", "group": "Production", "description": "Pressure monitor B1", "warning_threshold": 1050.0, "critical_threshold": 1080.0},
+    "sensor-pres-0003": {"sensor_type": "pressure", "location": "Hall-B2", "group": "Production", "description": "Pressure monitor B2", "warning_threshold": 1050.0, "critical_threshold": 1080.0},
+    "sensor-humi-0004": {"sensor_type": "humidity", "location": "Cold-Storage", "group": "Storage", "description": "Cold storage humidity", "warning_threshold": 80.0, "critical_threshold": 90.0},
+    "sensor-humi-0005": {"sensor_type": "humidity", "location": "Server-Room", "group": "Infrastructure", "description": "Server room humidity", "warning_threshold": 65.0, "critical_threshold": 75.0},
+    "sensor-vibr-0006": {"sensor_type": "vibration", "location": "Production-Line-1", "group": "Production", "description": "Vibration on line 1", "warning_threshold": 30.0, "critical_threshold": 40.0},
+    "sensor-vibr-0007": {"sensor_type": "vibration", "location": "Production-Line-2", "group": "Production", "description": "Vibration on line 2", "warning_threshold": 30.0, "critical_threshold": 40.0}
+  },
+  "default_thresholds": {
+    "temperature": {"warning": 60.0, "critical": 70.0},
+    "pressure": {"warning": 1050.0, "critical": 1080.0},
+    "humidity": {"warning": 80.0, "critical": 90.0},
+    "vibration": {"warning": 30.0, "critical": 40.0}
+  }
+}
