@@ -1,0 +1,69 @@
+# =============================================================================
+# Flink JobManager – Deployment
+# =============================================================================
+apiVersion: v1
+kind: Service
+metadata:
+  name: flink-jobmanager
+  namespace: {{ include "iot.namespace" . }}
+  labels:
+    app: flink
+    component: jobmanager
+    {{- include "iot.labels" . | nindent 4 }}
+spec:
+  ports:
+    - name: rpc
+      port: 6123
+      targetPort: 6123
+    - name: blob
+      port: 6124
+      targetPort: 6124
+    - name: ui
+      port: 8081
+      targetPort: 8081
+  selector:
+    app: flink
+    component: jobmanager
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-jobmanager
+  namespace: {{ include "iot.namespace" . }}
+  labels:
+    app: flink
+    component: jobmanager
+    {{- include "iot.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.flink.jobManager.replicas }}
+  selector:
+    matchLabels:
+      app: flink
+      component: jobmanager
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: jobmanager
+    spec:
+      containers:
+        - name: jobmanager
+          image: "{{ .Values.images.flink.repository }}:{{ .Values.images.flink.tag }}"
+          imagePullPolicy: {{ .Values.images.flink.pullPolicy }}
+          command: ["/docker-entrypoint.sh"]
+          args: ["jobmanager"]
+          ports:
+            - containerPort: 6123
+              name: rpc
+            - containerPort: 6124
+              name: blob
+            - containerPort: 8081
+              name: ui
+          env:
+            - name: FLINK_PROPERTIES
+              value: |
+                jobmanager.rpc.address: flink-jobmanager
+                state.checkpoints.dir: file:///tmp/flink-checkpoints
+                state.backend: hashmap
+          resources:
+            {{- toYaml .Values.flink.jobManager.resources | nindent 12 }}

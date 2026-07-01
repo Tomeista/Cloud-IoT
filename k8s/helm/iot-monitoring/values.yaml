@@ -1,0 +1,115 @@
+# =============================================================================
+# IoT Sensor Monitoring – Helm Values
+# =============================================================================
+
+namespace: iot-monitoring
+
+# ── Container Images ─────────────────────────────────────────────────────────
+# Für lokales k3s: Images lokal bauen und z.B. über lokale Registry verwenden
+# Alternativ: Images in eine Container-Registry pushen und hier referenzieren
+images:
+  backend:
+    repository: iot-monitoring/backend
+    tag: latest
+    pullPolicy: IfNotPresent
+  frontend:
+    repository: iot-monitoring/frontend
+    tag: latest
+    pullPolicy: IfNotPresent
+  flink:
+    repository: iot-monitoring/flink-job
+    tag: latest
+    pullPolicy: IfNotPresent
+  kafka:
+    repository: bitnami/kafka
+    tag: "3.7"
+  minio:
+    repository: minio/minio
+    tag: latest
+
+# ── Kafka ────────────────────────────────────────────────────────────────────
+kafka:
+  replicas: 1
+  storage:
+    size: 5Gi
+    storageClass: ""   # Leer = default StorageClass
+  resources:
+    requests:
+      memory: 512Mi
+      cpu: 250m
+    limits:
+      memory: 1Gi
+      cpu: 500m
+
+# ── MinIO ────────────────────────────────────────────────────────────────────
+minio:
+  replicas: 1
+  rootUser: minioadmin
+  rootPassword: minioadmin
+  buckets:
+    - warehouse
+    - checkpoints
+  storage:
+    size: 5Gi
+    storageClass: ""
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 250m
+
+# ── Flink ────────────────────────────────────────────────────────────────────
+flink:
+  jobManager:
+    replicas: 1
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 250m
+      limits:
+        memory: 1Gi
+        cpu: 500m
+  taskManager:
+    replicas: 1
+    taskSlots: 4
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 250m
+      limits:
+        memory: 1Gi
+        cpu: 500m
+
+# ── Backend (FastAPI) ────────────────────────────────────────────────────────
+backend:
+  replicas: 1
+  port: 8000
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 256Mi
+      cpu: 250m
+
+# ── Frontend (nginx) ────────────────────────────────────────────────────────
+frontend:
+  replicas: 1
+  port: 80
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 50m
+    limits:
+      memory: 128Mi
+      cpu: 100m
+  service:
+    type: NodePort
+    nodePort: 30080
+
+# ── Ingress (optional) ──────────────────────────────────────────────────────
+ingress:
+  enabled: false
+  host: iot.local

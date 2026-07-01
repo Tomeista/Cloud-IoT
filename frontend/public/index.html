@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="de" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IoT Sensor Monitoring</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            surface: { 50: '#f8fafc', 100: '#f1f5f9', 200: '#e2e8f0', 700: '#1e293b', 800: '#0f172a', 900: '#020617' },
+          }
+        }
+      }
+    }
+  </script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="h-full bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-slate-200 antialiased">
+
+  <!-- Header -->
+  <header class="backdrop-blur-xl bg-slate-900/70 border-b border-slate-700/50 sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-400 flex items-center justify-center shadow-lg shadow-blue-500/20">
+          <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-lg font-semibold text-white tracking-tight">IoT Sensor Monitoring</h1>
+          <p class="text-xs text-slate-400 -mt-0.5">Echtzeit-Pipeline</p>
+        </div>
+      </div>
+      <nav class="flex gap-1 bg-slate-800/50 rounded-xl p-1 border border-slate-700/50">
+        <button onclick="showTab('producer')" id="tab-producer"
+          class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition-all duration-200 active">
+          <span class="flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+            Producer
+          </span>
+        </button>
+        <button onclick="showTab('dashboard')" id="tab-dashboard"
+          class="tab-btn px-5 py-2 rounded-lg text-sm font-medium transition-all duration-200">
+          <span class="flex items-center gap-2">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 5a1 1 0 011-1h14a1 1 0 011 1v2a1 1 0 01-1 1H5a1 1 0 01-1-1V5zM4 13a1 1 0 011-1h6a1 1 0 011 1v6a1 1 0 01-1 1H5a1 1 0 01-1-1v-6zM16 13a1 1 0 011-1h2a1 1 0 011 1v6a1 1 0 01-1 1h-2a1 1 0 01-1-1v-6z"/></svg>
+            Dashboard
+          </span>
+        </button>
+      </nav>
+      <div class="flex items-center gap-4">
+        <span id="kafka-status" class="status-pill">
+          <span class="w-2 h-2 rounded-full bg-slate-500 animate-pulse"></span> Verbinde…
+        </span>
+        <span id="ws-status" class="status-pill">
+          <span class="w-2 h-2 rounded-full bg-slate-500"></span> WS
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-6 py-8">
+
+    <!-- ===================== PRODUCER TAB ===================== -->
+    <section id="view-producer">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        <!-- Manual Event Form -->
+        <div class="card">
+          <div class="flex items-center gap-2 mb-5">
+            <div class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
+              <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+            </div>
+            <h2 class="text-base font-semibold text-slate-100">Manuelles Event</h2>
+          </div>
+          <form id="event-form" class="space-y-4">
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="field-label">Sensortyp</label>
+                <select id="evt-type" class="input-field w-full">
+                  <option value="temperature">🌡️ Temperatur (°C)</option>
+                  <option value="pressure">🔵 Druck (hPa)</option>
+                  <option value="humidity">💧 Feuchtigkeit (%)</option>
+                  <option value="vibration">〰️ Vibration (mm/s)</option>
+                </select>
+              </div>
+              <div>
+                <label class="field-label">Standort</label>
+                <select id="evt-location" class="input-field w-full">
+                  <option>Hall-A1</option><option>Hall-A2</option>
+                  <option>Hall-B1</option><option>Hall-B2</option>
+                  <option>Outdoor-Storage-1</option><option>Outdoor-Storage-2</option>
+                  <option>Office-GF</option><option>Office-1F</option>
+                  <option>Server-Room</option>
+                  <option>Production-Line-1</option><option>Production-Line-2</option>
+                  <option>Cold-Storage</option>
+                </select>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+              <div>
+                <label class="field-label">Wert</label>
+                <input type="number" step="0.01" id="evt-value" class="input-field w-full" placeholder="z.B. 42.5" />
+              </div>
+              <div>
+                <label class="field-label">Sensor-ID</label>
+                <input type="text" id="evt-sensor-id" class="input-field w-full" placeholder="auto" />
+              </div>
+            </div>
+            <button type="submit" class="btn-primary w-full">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/></svg>
+              Event senden
+            </button>
+          </form>
+          <p id="evt-feedback" class="mt-3 text-sm text-emerald-400 hidden"></p>
+        </div>
+
+        <!-- Simulator Controls -->
+        <div class="card">
+          <div class="flex items-center gap-2 mb-5">
+            <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+              <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <h2 class="text-base font-semibold text-slate-100">Simulator</h2>
+          </div>
+          <div class="space-y-5">
+            <div class="grid grid-cols-3 gap-3">
+              <div>
+                <label class="field-label">Sensoren</label>
+                <input type="number" id="sim-sensors" value="20" min="1" max="500" class="input-field w-full" />
+              </div>
+              <div>
+                <label class="field-label">Intervall (s)</label>
+                <input type="number" id="sim-interval" value="1.0" min="0.1" step="0.1" class="input-field w-full" />
+              </div>
+              <div>
+                <label class="field-label">Batch</label>
+                <input type="number" id="sim-batch" value="5" min="1" class="input-field w-full" />
+              </div>
+            </div>
+            <div class="flex gap-3">
+              <button onclick="startSimulator()" id="btn-sim-start" class="btn-primary flex-1">
+                ▶ Starten
+              </button>
+              <button onclick="stopSimulator()" id="btn-sim-stop" class="btn-danger flex-1" disabled>
+                ■ Stoppen
+              </button>
+            </div>
+            <div class="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-slate-800/50 border border-slate-700/30">
+              <span id="sim-status-dot" class="w-2.5 h-2.5 rounded-full bg-slate-600"></span>
+              <span id="sim-status-text" class="text-sm text-slate-400">Inaktiv</span>
+              <span class="ml-auto text-sm text-slate-500">
+                <span class="font-mono" id="sim-event-count">0</span> Events
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Event Log -->
+        <div class="lg:col-span-2 card">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2">
+              <div class="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center">
+                <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+              </div>
+              <h2 class="text-base font-semibold text-slate-100">Live Event Log</h2>
+            </div>
+            <button onclick="clearEventLog()" class="text-xs text-slate-500 hover:text-slate-300 transition-colors px-2 py-1 rounded hover:bg-slate-700/50">Leeren</button>
+          </div>
+          <div id="event-log" class="h-64 overflow-y-auto font-mono text-xs space-y-1 rounded-lg bg-slate-800/30 p-3 border border-slate-700/30">
+            <p class="text-slate-600 italic">Noch keine Events…</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================== DASHBOARD TAB ===================== -->
+    <section id="view-dashboard" class="hidden">
+
+      <!-- Stats Cards -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+        <div class="stat-card group" id="card-temperature">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-lg">🌡️</span>
+            <p class="text-xs text-slate-400 uppercase tracking-wider font-medium">Temperatur</p>
+          </div>
+          <p class="text-3xl font-bold text-slate-100 tabular-nums"><span id="val-temperature">--</span><span class="text-sm font-normal text-slate-500 ml-1">°C</span></p>
+          <p class="text-xs text-slate-500 mt-2">Ø letzte Minute</p>
+        </div>
+        <div class="stat-card group" id="card-pressure">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-lg">🔵</span>
+            <p class="text-xs text-slate-400 uppercase tracking-wider font-medium">Druck</p>
+          </div>
+          <p class="text-3xl font-bold text-slate-100 tabular-nums"><span id="val-pressure">--</span><span class="text-sm font-normal text-slate-500 ml-1">hPa</span></p>
+          <p class="text-xs text-slate-500 mt-2">Ø letzte Minute</p>
+        </div>
+        <div class="stat-card group" id="card-humidity">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-lg">💧</span>
+            <p class="text-xs text-slate-400 uppercase tracking-wider font-medium">Feuchtigkeit</p>
+          </div>
+          <p class="text-3xl font-bold text-slate-100 tabular-nums"><span id="val-humidity">--</span><span class="text-sm font-normal text-slate-500 ml-1">%</span></p>
+          <p class="text-xs text-slate-500 mt-2">Ø letzte Minute</p>
+        </div>
+        <div class="stat-card group" id="card-vibration">
+          <div class="flex items-center gap-2 mb-2">
+            <span class="text-lg">〰️</span>
+            <p class="text-xs text-slate-400 uppercase tracking-wider font-medium">Vibration</p>
+          </div>
+          <p class="text-3xl font-bold text-slate-100 tabular-nums"><span id="val-vibration">--</span><span class="text-sm font-normal text-slate-500 ml-1">mm/s</span></p>
+          <p class="text-xs text-slate-500 mt-2">Ø letzte Minute</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+        <!-- Temperature Chart -->
+        <div class="card">
+          <div class="flex items-center gap-2 mb-4">
+            <span class="text-lg">🌡️</span>
+            <h2 class="text-sm font-semibold text-slate-100">Temperatur (°C)</h2>
+          </div>
+          <div class="relative h-48">
+            <canvas id="chart-temperature"></canvas>
+          </div>
+        </div>
+
+        <!-- Pressure Chart -->
+        <div class="card">
+          <div class="flex items-center gap-2 mb-4">
+            <span class="text-lg">🔵</span>
+            <h2 class="text-sm font-semibold text-slate-100">Druck (hPa)</h2>
+          </div>
+          <div class="relative h-48">
+            <canvas id="chart-pressure"></canvas>
+          </div>
+        </div>
+
+        <!-- Humidity Chart -->
+        <div class="card">
+          <div class="flex items-center gap-2 mb-4">
+            <span class="text-lg">💧</span>
+            <h2 class="text-sm font-semibold text-slate-100">Luftfeuchtigkeit (%)</h2>
+          </div>
+          <div class="relative h-48">
+            <canvas id="chart-humidity"></canvas>
+          </div>
+        </div>
+
+        <!-- Vibration Chart -->
+        <div class="card">
+          <div class="flex items-center gap-2 mb-4">
+            <span class="text-lg">〰️</span>
+            <h2 class="text-sm font-semibold text-slate-100">Vibration (mm/s)</h2>
+          </div>
+          <div class="relative h-48">
+            <canvas id="chart-vibration"></canvas>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+        <!-- Alerts -->
+        <div class="card">
+          <div class="flex items-center justify-between mb-4">
+            <div class="flex items-center gap-2">
+              <div class="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center">
+                <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"/></svg>
+              </div>
+              <h2 class="text-base font-semibold text-slate-100">Alerts</h2>
+            </div>
+            <span id="alert-count" class="bg-red-500/10 text-red-400 text-xs font-medium px-2.5 py-1 rounded-full border border-red-500/20">0</span>
+          </div>
+          <div id="alert-list" class="space-y-2 h-60 overflow-y-auto pr-1">
+            <p class="text-slate-600 italic text-sm text-center py-8">Keine Alerts</p>
+          </div>
+        </div>
+
+        <!-- Aggregates Table -->
+        <div class="lg:col-span-3 card">
+          <div class="flex items-center gap-2 mb-5">
+            <div class="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+              <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M3 14h18m-9-4v8m-7 0h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/></svg>
+            </div>
+            <h2 class="text-base font-semibold text-slate-100">Aggregierte Werte</h2>
+          </div>
+          <div class="overflow-x-auto rounded-lg border border-slate-700/30">
+            <table class="w-full text-sm table-fixed">
+              <thead>
+                <tr class="text-slate-400 text-left bg-slate-800/50">
+                  <th class="px-5 py-3.5 font-medium w-[16%]">Sensor</th>
+                  <th class="px-5 py-3.5 font-medium w-[11%]">Typ</th>
+                  <th class="px-5 py-3.5 font-medium w-[14%]">Standort</th>
+                  <th class="px-5 py-3.5 font-medium w-[10%]">Ø</th>
+                  <th class="px-5 py-3.5 font-medium w-[10%]">Min</th>
+                  <th class="px-5 py-3.5 font-medium w-[10%]">Max</th>
+                  <th class="px-5 py-3.5 font-medium w-[9%]">Events</th>
+                  <th class="px-5 py-3.5 font-medium w-[20%]">Fenster</th>
+                </tr>
+              </thead>
+              <tbody id="agg-table-body" class="text-slate-300 divide-y divide-slate-700/30">
+                <tr><td colspan="8" class="py-10 text-center text-slate-600 italic">Warte auf Daten…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: iot-config
+  namespace: {{ include "iot.namespace" . }}
+  labels:
+    {{- include "iot.labels" . | nindent 4 }}
+data:
+  KAFKA_BOOTSTRAP_SERVERS: "kafka.{{ include "iot.namespace" . }}.svc.cluster.local:9092"
+  KAFKA_EVENTS_TOPIC: "sensor-events"
+  KAFKA_AGGREGATES_TOPIC: "sensor-aggregates"
+  KAFKA_ALERTS_TOPIC: "sensor-alerts"
+  MINIO_ENDPOINT: "minio.{{ include "iot.namespace" . }}.svc.cluster.local:9000"
+  MINIO_BUCKET: "warehouse"
+  SENSOR_METADATA_PATH: "/opt/flink/sensor_metadata.json"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-credentials
+  namespace: {{ include "iot.namespace" . }}
+  labels:
+    {{- include "iot.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  MINIO_ACCESS_KEY: {{ .Values.minio.rootUser | quote }}
+  MINIO_SECRET_KEY: {{ .Values.minio.rootPassword | quote }}

@@ -1,0 +1,46 @@
+{
+  "sensor_types": {
+    "temperature": {
+      "description": "Temperatursensor",
+      "unit": "°C",
+      "alert_threshold_high": 60.0,
+      "alert_threshold_low": -5.0,
+      "normal_range": [15.0, 35.0]
+    },
+    "pressure": {
+      "description": "Drucksensor",
+      "unit": "hPa",
+      "alert_threshold_high": 1050.0,
+      "alert_threshold_low": 950.0,
+      "normal_range": [980.0, 1020.0]
+    },
+    "humidity": {
+      "description": "Luftfeuchtigkeitssensor",
+      "unit": "%",
+      "alert_threshold_high": 85.0,
+      "alert_threshold_low": 15.0,
+      "normal_range": [30.0, 60.0]
+    },
+    "vibration": {
+      "description": "Vibrationssensor",
+      "unit": "mm/s",
+      "alert_threshold_high": 35.0,
+      "alert_threshold_low": 0.0,
+      "normal_range": [0.0, 15.0]
+    }
+  },
+  "locations": {
+    "Hall-A1": { "group": "Production", "description": "Produktionshalle A, Bereich 1" },
+    "Hall-A2": { "group": "Production", "description": "Produktionshalle A, Bereich 2" },
+    "Hall-B1": { "group": "Production", "description": "Produktionshalle B, Bereich 1" },
+    "Hall-B2": { "group": "Production", "description": "Produktionshalle B, Bereich 2" },
+    "Outdoor-Storage-1": { "group": "Storage", "description": "Außenlager 1" },
+    "Outdoor-Storage-2": { "group": "Storage", "description": "Außenlager 2" },
+    "Office-GF": { "group": "Office", "description": "Büro Erdgeschoss" },
+    "Office-1F": { "group": "Office", "description": "Büro 1. OG" },
+    "Server-Room": { "group": "Infrastructure", "description": "Serverraum" },
+    "Production-Line-1": { "group": "Production", "description": "Fertigungslinie 1" },
+    "Production-Line-2": { "group": "Production", "description": "Fertigungslinie 2" },
+    "Cold-Storage": { "group": "Storage", "description": "Kühlhaus" }
+  }
+}

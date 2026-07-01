@@ -1,0 +1,81 @@
+# =============================================================================
+# Flink TaskManager – Deployment
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-taskmanager
+  namespace: {{ include "iot.namespace" . }}
+  labels:
+    app: flink
+    component: taskmanager
+    {{- include "iot.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.flink.taskManager.replicas }}
+  selector:
+    matchLabels:
+      app: flink
+      component: taskmanager
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: taskmanager
+    spec:
+      containers:
+        - name: taskmanager
+          image: "{{ .Values.images.flink.repository }}:{{ .Values.images.flink.tag }}"
+          imagePullPolicy: {{ .Values.images.flink.pullPolicy }}
+          command: ["/docker-entrypoint.sh"]
+          args: ["taskmanager"]
+          env:
+            - name: FLINK_PROPERTIES
+              value: |
+                jobmanager.rpc.address: flink-jobmanager.{{ include "iot.namespace" . }}.svc.cluster.local
+                taskmanager.numberOfTaskSlots: {{ .Values.flink.taskManager.taskSlots }}
+                state.checkpoints.dir: file:///tmp/flink-checkpoints
+                state.backend: hashmap
+          resources:
+            {{- toYaml .Values.flink.taskManager.resources | nindent 12 }}
+---
+# =============================================================================
+# Flink Job Submission – Job (einmalig nach Deploy)
+# =============================================================================
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: flink-job-submit
+  namespace: {{ include "iot.namespace" . }}
+  labels:
+    app: flink
+    component: job-submit
+    {{- include "iot.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/hook: post-install,post-upgrade
+    helm.sh/hook-weight: "5"
+    helm.sh/hook-delete-policy: before-hook-creation
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: job-submit
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: submit
+          image: "{{ .Values.images.flink.repository }}:{{ .Values.images.flink.tag }}"
+          imagePullPolicy: {{ .Values.images.flink.pullPolicy }}
+          command:
+            - bash
+            - -c
+            - |
+              echo "Waiting for Flink cluster to be ready..."
+              sleep 30
+              /opt/flink/bin/flink run \
+                -m flink-jobmanager.{{ include "iot.namespace" . }}.svc.cluster.local:8081 \
+                -py /opt/flink/job.py
+          envFrom:
+            - configMapRef:
+                name: iot-config
