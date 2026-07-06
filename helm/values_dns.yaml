@@ -1,0 +1,40 @@
+# ------------------------------------------------------------------------------
+# Namespace is usually created outside Helm, but you can note it here
+# ------------------------------------------------------------------------------
+namespace: external-dns
+
+# ------------------------------------------------------------------------------
+# Image configuration
+# ------------------------------------------------------------------------------
+image:
+  repository: registry.k8s.io/external-dns/external-dns
+  tag: "v0.19.0"
+  pullPolicy: IfNotPresent
+
+# ------------------------------------------------------------------------------
+# Provider (Helm-native)
+# ------------------------------------------------------------------------------
+logLevel: debug
+
+provider:
+  name: rfc2136
+
+policy: sync
+
+registry: txt
+txtOwnerId: dynamic-zones-dns
+txtPrefix: dynamic-zones-dns-
+
+# ------------------------------------------------------------------------------
+# CLI arguments corresponding to your deployment spec
+# ------------------------------------------------------------------------------
+extraArgs:
+  - --rfc2136-host=141.72.5.244
+  - --rfc2136-port=53
+  - --rfc2136-zone=s242138-at-student-dhbw-mannheim-de.users.dhbw.site
+  - --rfc2136-tsig-secret=yUpDqtyMj8f7pFIqtM06Vr8xmvkLGzZa0dMkQZGaxv6UGUyd67ZB1VXTKGqNlQcGYd7Wm3RzxkhxwfDLKhU4nw==
+  - --rfc2136-tsig-secret-alg=hmac-sha512
+  - --rfc2136-tsig-keyname=user-key-6eca18341166f283c525376e0035aece9f22728c
+  - --rfc2136-tsig-axfr
+  - --source=ingress
+  - --domain-filter=s242138-at-student-dhbw-mannheim-de.users.dhbw.site
