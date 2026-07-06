@@ -1,0 +1,123 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flink-config
+  namespace: iot-monitoring
+data:
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  KAFKA_EVENTS_TOPIC: "sensor-events"
+  KAFKA_AGGREGATES_TOPIC: "sensor-aggregates"
+  KAFKA_ALERTS_TOPIC: "sensor-alerts"
+  METADATA_PATH: "/opt/flink/job/metadata.json"
+  flink-conf.yaml: |
+    jobmanager.rpc.address: flink-jobmanager
+    jobmanager.rpc.port: 6123
+    jobmanager.memory.process.size: 1024m
+    taskmanager.memory.process.size: 1024m
+    taskmanager.numberOfTaskSlots: 2
+    parallelism.default: 2
+    rest.port: 8081
+    rest.bind-address: ::
+    env.java.opts: -Djava.net.preferIPv6Addresses=true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-jobmanager
+  namespace: iot-monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flink
+      component: jobmanager
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: jobmanager
+    spec:
+      containers:
+        - name: jobmanager
+          image: iot-monitoring/flink-job:latest
+          args: ["jobmanager"]
+          ports:
+            - containerPort: 6123
+              name: rpc
+            - containerPort: 8081
+              name: webui
+          envFrom:
+            - configMapRef:
+                name: flink-config
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          volumeMounts:
+            - name: flink-config-volume
+              mountPath: /opt/flink/conf/flink-conf.yaml
+              subPath: flink-conf.yaml
+      volumes:
+        - name: flink-config-volume
+          configMap:
+            name: flink-config
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flink-taskmanager
+  namespace: iot-monitoring
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: flink
+      component: taskmanager
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: taskmanager
+    spec:
+      containers:
+        - name: taskmanager
+          image: iot-monitoring/flink-job:latest
+          args: ["taskmanager"]
+          envFrom:
+            - configMapRef:
+                name: flink-config
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          volumeMounts:
+            - name: flink-config-volume
+              mountPath: /opt/flink/conf/flink-conf.yaml
+              subPath: flink-conf.yaml
+      volumes:
+        - name: flink-config-volume
+          configMap:
+            name: flink-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flink-jobmanager
+  namespace: iot-monitoring
+spec:
+  ports:
+    - port: 6123
+      targetPort: 6123
+      name: rpc
+    - port: 8081
+      targetPort: 8081
+      name: webui
+  selector:
+    app: flink
+    component: jobmanager

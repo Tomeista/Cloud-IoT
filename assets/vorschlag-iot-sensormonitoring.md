@@ -57,16 +57,6 @@ Gewählt wird eine **Kappa-Architektur**. Alle Daten laufen durch einen einzigen
 - die Architektur einfacher zu erklären und umzusetzen ist als Lambda
 - ein konsistenter End-to-End-Datenfluss für die Bewertung wichtiger ist als maximale Komplexität
 
-### Begründete Vereinfachung
-
-Im Gegensatz zum ursprünglichen Entwurf wird die Architektur bewusst reduziert:
-
-- **kein direkter Browser-zu-Kafka-Zugriff**
-- **kein Trino im MVP**
-- **keine zweite separate Producer- und Consumer-Anwendung**, sondern eine gemeinsame Web-UI mit zwei Ansichten
-
-Diese Reduktion verbessert die Umsetzbarkeit deutlich, ohne die Prüfungsanforderungen zu verletzen.
-
 ### Architekturdiagramm
 
 ```mermaid
@@ -184,12 +174,6 @@ Optional kann später noch eine Rohdatentabelle ergänzt werden, sie ist aber ni
 | Partitionierung | nach Datum und Ergebnistyp                                             | einfach, verständlich und für Demo-Abfragen ausreichend                               |
 | Schema          | klare Spalten für Sensor, Zeitfenster, Kennzahl, Standort, Alarmstatus | direkt passend für Serving und Dashboard                                              |
 | Speicher        | MinIO als S3-kompatibler Objektspeicher                                | leichtgewichtig und gut auf Kubernetes betreibbar                                     |
-
-### Warum kein überkomplexes Schema?
-
-Ein zu detailliertes Speicherkonzept mit vielen Tabellen, Time-Travel-Argumenten und Query-Engines bringt im Prototyp nur Zusatzaufwand. Für die Bewertung ist wichtiger, dass Format, Schema und Partitionierung begründet und konsistent sind.
-
----
 
 ## 7. User-Facing UI
 

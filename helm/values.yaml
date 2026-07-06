@@ -1,0 +1,119 @@
+# IoT Sensor Monitoring - Helm Values
+# Override these values for your deployment
+
+namespace: iot-monitoring
+
+# Container image registry (set to your registry)
+imageRegistry: "iot-monitoring"
+imagePullPolicy: IfNotPresent
+
+# Frontend
+frontend:
+  replicas: 2
+  image: frontend
+  tag: latest
+  service:
+    type: NodePort
+    port: 80
+    nodePort: 30080
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "200m"
+
+# Backend (FastAPI)
+backend:
+  replicas: 2
+  image: backend
+  tag: latest
+  service:
+    port: 8000
+  simulator:
+    numSensors: 20
+    interval: 1.0
+  resources:
+    requests:
+      memory: "128Mi"
+      cpu: "100m"
+    limits:
+      memory: "256Mi"
+      cpu: "500m"
+
+# Apache Kafka
+kafka:
+  replicas: 1
+  image: confluentinc/cp-kafka
+  tag: "7.6.1"
+  storage: 5Gi
+  resources:
+    requests:
+      memory: "512Mi"
+      cpu: "200m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
+# Zookeeper (required by Kafka)
+zookeeper:
+  replicas: 1
+  image: confluentinc/cp-zookeeper
+  tag: "7.6.1"
+  storage: 1Gi
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Apache Flink
+flink:
+  jobmanager:
+    replicas: 1
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "200m"
+      limits:
+        memory: "1Gi"
+        cpu: "1000m"
+  taskmanager:
+    replicas: 2
+    taskSlots: 2
+    resources:
+      requests:
+        memory: "512Mi"
+        cpu: "200m"
+      limits:
+        memory: "1Gi"
+        cpu: "1000m"
+  image: flink-job
+  tag: latest
+
+# MinIO (S3-compatible object storage)
+minio:
+  replicas: 1
+  image: minio/minio
+  tag: latest
+  storage: 10Gi
+  credentials:
+    rootUser: minioadmin
+    rootPassword: minioadmin
+  bucket: iot-lakehouse
+  resources:
+    requests:
+      memory: "256Mi"
+      cpu: "100m"
+    limits:
+      memory: "512Mi"
+      cpu: "500m"
+
+# Kafka topic configuration
+kafka_topics:
+  events: sensor-events
+  aggregates: sensor-aggregates
+  alerts: sensor-alerts
