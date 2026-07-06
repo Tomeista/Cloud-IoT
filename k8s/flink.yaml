@@ -17,6 +17,8 @@ data:
     taskmanager.numberOfTaskSlots: 2
     parallelism.default: 2
     rest.port: 8081
+    rest.bind-address: ::
+    env.java.opts: -Djava.net.preferIPv6Addresses=true
 ---
 apiVersion: apps/v1
 kind: Deployment

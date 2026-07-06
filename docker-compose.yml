@@ -28,6 +28,7 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OPTS: "-Djava.net.preferIPv6Addresses=true"
     volumes:
       - kafka-data:/var/lib/kafka/data
 
@@ -88,6 +89,8 @@ services:
         jobmanager.rpc.address: flink-jobmanager
         taskmanager.numberOfTaskSlots: 2
         parallelism.default: 2
+        rest.bind-address: ::
+        env.java.opts: -Djava.net.preferIPv6Addresses=true
     depends_on:
       - kafka
 
@@ -104,6 +107,7 @@ services:
         jobmanager.rpc.address: flink-jobmanager
         taskmanager.numberOfTaskSlots: 2
         parallelism.default: 2
+        env.java.opts: -Djava.net.preferIPv6Addresses=true
     depends_on:
       - flink-jobmanager
     deploy:
