@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react';
 import {
   Box,
   Card,
@@ -7,12 +6,6 @@ import {
   Typography,
   Chip,
   Stack,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Paper,
   Divider,
 } from '@mui/material';
@@ -21,32 +14,12 @@ import ThermostatIcon from '@mui/icons-material/Thermostat';
 import WaterDropIcon from '@mui/icons-material/WaterDrop';
 import SpeedIcon from '@mui/icons-material/Speed';
 import VibrationIcon from '@mui/icons-material/Vibration';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from 'recharts';
-
-// Mock data for development
-const MOCK_AGGREGATES = [
-  { window_start: '10:00', sensor_id: 'sensor-001', sensor_type: 'temperature', location: 'Hall A', avg_value: 24.5, min_value: 22.1, max_value: 27.3, event_count: 60 },
-  { window_start: '10:01', sensor_id: 'sensor-001', sensor_type: 'temperature', location: 'Hall A', avg_value: 25.1, min_value: 22.8, max_value: 28.1, event_count: 58 },
-  { window_start: '10:02', sensor_id: 'sensor-001', sensor_type: 'temperature', location: 'Hall A', avg_value: 26.8, min_value: 24.0, max_value: 30.2, event_count: 62 },
-  { window_start: '10:03', sensor_id: 'sensor-001', sensor_type: 'temperature', location: 'Hall A', avg_value: 28.3, min_value: 25.5, max_value: 32.1, event_count: 59 },
-  { window_start: '10:04', sensor_id: 'sensor-001', sensor_type: 'temperature', location: 'Hall A', avg_value: 27.1, min_value: 24.2, max_value: 29.8, event_count: 61 },
-  { window_start: '10:05', sensor_id: 'sensor-001', sensor_type: 'temperature', location: 'Hall A', avg_value: 25.6, min_value: 23.0, max_value: 28.4, event_count: 60 },
-];
-
-const MOCK_ALERTS = [
-  { id: 1, sensor_id: 'sensor-003', sensor_type: 'temperature', location: 'Hall B', value: 78.2, threshold: 70, timestamp: '2026-06-17T10:03:22Z', severity: 'critical' },
-  { id: 2, sensor_id: 'sensor-007', sensor_type: 'vibration', location: 'Hall A', value: 42.5, threshold: 35, timestamp: '2026-06-17T10:02:45Z', severity: 'warning' },
-  { id: 3, sensor_id: 'sensor-012', sensor_type: 'pressure', location: 'Hall C', value: 1085, threshold: 1080, timestamp: '2026-06-17T09:58:10Z', severity: 'warning' },
-];
+import SensorsIcon from '@mui/icons-material/Sensors';
+import BoltIcon from '@mui/icons-material/Bolt';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
+import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import { useLiveData } from '../LiveDataContext';
 
 const SENSOR_ICONS = {
   temperature: <ThermostatIcon />,
@@ -55,58 +28,107 @@ const SENSOR_ICONS = {
   vibration: <VibrationIcon />,
 };
 
-const STAT_CARDS = [
-  { label: 'Active Sensors', value: '12', color: 'primary.main' },
-  { label: 'Events / min', value: '240', color: 'success.main' },
-  { label: 'Active Alerts', value: '3', color: 'error.main' },
-  { label: 'Avg Temperature', value: '25.6°C', color: 'warning.main' },
-];
+const LOG_META = {
+  info: { color: 'info', icon: <InfoOutlinedIcon fontSize="small" /> },
+  warning: { color: 'warning', icon: <ReportProblemOutlinedIcon fontSize="small" /> },
+  error: { color: 'error', icon: <ErrorOutlineIcon fontSize="small" /> },
+};
+
+const fmtTime = (value) => {
+  try {
+    return new Date(value).toLocaleTimeString();
+  } catch {
+    return String(value);
+  }
+};
 
 function DashboardView() {
-  const [aggregates, setAggregates] = useState(MOCK_AGGREGATES);
-  const [alerts, setAlerts] = useState(MOCK_ALERTS);
+  const { aggregates, alerts, logs, connected, lastUpdated } = useLiveData();
 
-  useEffect(() => {
-    // Fetch real data when backend is available
-    const fetchData = async () => {
-      try {
-        const [aggRes, alertRes] = await Promise.all([
-          fetch('/api/aggregates'),
-          fetch('/api/alerts'),
-        ]);
-        if (aggRes.ok) setAggregates(await aggRes.json());
-        if (alertRes.ok) setAlerts(await alertRes.json());
-      } catch {
-        // Use mock data during development
-      }
-    };
+  // KPIs derived from the live data (no hardcoded values).
+  const activeSensors = new Set(aggregates.map((a) => a.sensor_id)).size;
+  const latestWindow = aggregates.reduce(
+    (m, a) => (a.window_start > m ? a.window_start : m),
+    '',
+  );
+  const eventsPerMin = aggregates
+    .filter((a) => a.window_start === latestWindow)
+    .reduce((sum, a) => sum + (a.event_count || 0), 0);
+  const criticalCount = alerts.filter((a) => a.severity === 'critical').length;
 
-    fetchData();
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  const stats = [
+    {
+      label: 'Active Alerts',
+      value: alerts.length,
+      sub: `${criticalCount} critical`,
+      color: alerts.length ? 'error.main' : 'success.main',
+      icon: <WarningAmberIcon />,
+    },
+    {
+      label: 'Active Sensors',
+      value: activeSensors,
+      sub: 'reporting',
+      color: 'primary.main',
+      icon: <SensorsIcon />,
+    },
+    {
+      label: 'Events / min',
+      value: eventsPerMin,
+      sub: latestWindow ? `window ${latestWindow}` : '—',
+      color: 'success.main',
+      icon: <BoltIcon />,
+    },
+  ];
 
   return (
     <Box>
-      <Typography variant="h4" gutterBottom>
-        Dashboard
-      </Typography>
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-        Real-time overview of sensor aggregates and alerts.
-      </Typography>
+      <Stack
+        direction="row"
+        alignItems="flex-start"
+        justifyContent="space-between"
+        flexWrap="wrap"
+        gap={1}
+      >
+        <Box>
+          <Typography variant="h4" gutterBottom>
+            Dashboard
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+            Wichtigste Kennzahlen, aktive Alerts und System-Log.
+          </Typography>
+        </Box>
+        <Chip
+          size="small"
+          variant="outlined"
+          color={connected ? 'success' : 'default'}
+          label={
+            connected
+              ? `Live · ${lastUpdated ? fmtTime(lastUpdated) : ''}`
+              : 'Demo-Daten (kein Backend)'
+          }
+        />
+      </Stack>
 
-      {/* Stat Cards */}
+      {/* KPI cards */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
-        {STAT_CARDS.map((stat) => (
-          <Grid item xs={6} md={3} key={stat.label}>
+        {stats.map((s) => (
+          <Grid item xs={12} sm={4} key={s.label}>
             <Card>
-              <CardContent sx={{ textAlign: 'center', py: 2 }}>
-                <Typography variant="body2" color="text.secondary">
-                  {stat.label}
-                </Typography>
-                <Typography variant="h4" sx={{ color: stat.color, mt: 0.5 }}>
-                  {stat.value}
-                </Typography>
+              <CardContent>
+                <Stack direction="row" alignItems="center" spacing={1.5}>
+                  <Box sx={{ color: s.color, display: 'flex' }}>{s.icon}</Box>
+                  <Box>
+                    <Typography variant="body2" color="text.secondary">
+                      {s.label}
+                    </Typography>
+                    <Typography variant="h4" sx={{ color: s.color, lineHeight: 1.1 }}>
+                      {s.value}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {s.sub}
+                    </Typography>
+                  </Box>
+                </Stack>
               </CardContent>
             </Card>
           </Grid>
@@ -114,71 +136,31 @@ function DashboardView() {
       </Grid>
 
       <Grid container spacing={3}>
-        {/* Time Series Chart */}
-        <Grid item xs={12} lg={8}>
-          <Card>
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Temperature Trend (sensor-001)
-              </Typography>
-              <Divider sx={{ mb: 2 }} />
-              <ResponsiveContainer width="100%" height={280}>
-                <LineChart data={aggregates}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#eee" />
-                  <XAxis dataKey="window_start" />
-                  <YAxis domain={['auto', 'auto']} />
-                  <Tooltip />
-                  <Legend />
-                  <Line
-                    type="monotone"
-                    dataKey="avg_value"
-                    stroke="#1976d2"
-                    strokeWidth={2}
-                    name="Average"
-                    dot={{ r: 4 }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="max_value"
-                    stroke="#d32f2f"
-                    strokeWidth={1}
-                    strokeDasharray="4 4"
-                    name="Max"
-                    dot={false}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="min_value"
-                    stroke="#2e7d32"
-                    strokeWidth={1}
-                    strokeDasharray="4 4"
-                    name="Min"
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        {/* Alerts Panel */}
-        <Grid item xs={12} lg={4}>
-          <Card>
+        {/* Alerts */}
+        <Grid item xs={12} md={5}>
+          <Card sx={{ height: '100%' }}>
             <CardContent>
               <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
                 <WarningAmberIcon color="warning" />
                 <Typography variant="h6">Active Alerts</Typography>
+                <Chip label={alerts.length} size="small" />
               </Stack>
               <Divider sx={{ mb: 2 }} />
-              <Stack spacing={2}>
+              <Stack spacing={1.5} sx={{ maxHeight: 440, overflow: 'auto', pr: 1 }}>
+                {alerts.length === 0 && (
+                  <Typography variant="body2" color="text.secondary">
+                    Keine aktiven Alerts.
+                  </Typography>
+                )}
                 {alerts.map((alert) => (
                   <Paper
-                    key={alert.id}
+                    key={alert.id ?? `${alert.sensor_id}-${alert.timestamp}`}
                     variant="outlined"
                     sx={{
                       p: 1.5,
                       borderLeft: 4,
-                      borderColor: alert.severity === 'critical' ? 'error.main' : 'warning.main',
+                      borderColor:
+                        alert.severity === 'critical' ? 'error.main' : 'warning.main',
                     }}
                   >
                     <Stack direction="row" justifyContent="space-between" alignItems="center">
@@ -187,7 +169,7 @@ function DashboardView() {
                         <Box>
                           <Typography variant="subtitle2">{alert.sensor_id}</Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {alert.location}
+                            {alert.location} · {fmtTime(alert.timestamp)}
                           </Typography>
                         </Box>
                       </Stack>
@@ -199,6 +181,9 @@ function DashboardView() {
                     </Stack>
                     <Typography variant="body2" sx={{ mt: 1 }}>
                       Value: <strong>{alert.value}</strong> (threshold: {alert.threshold})
+                      {alert.consecutive_breaches != null && (
+                        <> · {alert.consecutive_breaches}× in Folge</>
+                      )}
                     </Typography>
                   </Paper>
                 ))}
@@ -207,46 +192,46 @@ function DashboardView() {
           </Card>
         </Grid>
 
-        {/* Aggregates Table */}
-        <Grid item xs={12}>
-          <Card>
+        {/* Live system log */}
+        <Grid item xs={12} md={7}>
+          <Card sx={{ height: '100%' }}>
             <CardContent>
-              <Typography variant="h6" gutterBottom>
-                Recent Aggregates
-              </Typography>
+              <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
+                <Typography variant="h6">Live System Log</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  (Sub-Alert-Ereignisse · geplant: /api/logs)
+                </Typography>
+              </Stack>
               <Divider sx={{ mb: 2 }} />
-              <TableContainer>
-                <Table size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>Window</TableCell>
-                      <TableCell>Sensor</TableCell>
-                      <TableCell>Type</TableCell>
-                      <TableCell>Location</TableCell>
-                      <TableCell align="right">Avg</TableCell>
-                      <TableCell align="right">Min</TableCell>
-                      <TableCell align="right">Max</TableCell>
-                      <TableCell align="right">Count</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {aggregates.map((row, idx) => (
-                      <TableRow key={idx} hover>
-                        <TableCell>{row.window_start}</TableCell>
-                        <TableCell>{row.sensor_id}</TableCell>
-                        <TableCell>
-                          <Chip label={row.sensor_type} size="small" variant="outlined" />
-                        </TableCell>
-                        <TableCell>{row.location}</TableCell>
-                        <TableCell align="right">{row.avg_value.toFixed(1)}</TableCell>
-                        <TableCell align="right">{row.min_value.toFixed(1)}</TableCell>
-                        <TableCell align="right">{row.max_value.toFixed(1)}</TableCell>
-                        <TableCell align="right">{row.event_count}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </TableContainer>
+              <Stack divider={<Divider flexItem />} sx={{ maxHeight: 440, overflow: 'auto' }}>
+                {logs.map((log) => {
+                  const meta = LOG_META[log.level] || LOG_META.info;
+                  return (
+                    <Stack
+                      key={log.id}
+                      direction="row"
+                      spacing={1.5}
+                      alignItems="flex-start"
+                      sx={{ py: 1 }}
+                    >
+                      <Chip
+                        size="small"
+                        color={meta.color}
+                        variant="outlined"
+                        icon={meta.icon}
+                        label={log.level}
+                        sx={{ minWidth: 96 }}
+                      />
+                      <Box sx={{ flexGrow: 1 }}>
+                        <Typography variant="body2">{log.message}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {log.source} · {fmtTime(log.timestamp)}
+                        </Typography>
+                      </Box>
+                    </Stack>
+                  );
+                })}
+              </Stack>
             </CardContent>
           </Card>
         </Grid>
