@@ -94,15 +94,16 @@ flink:
   image: flink-job
   tag: latest
 
-# MinIO (S3-compatible object storage)
-minio:
+# SeaweedFS (S3-compatible object storage)
+seaweedfs:
   replicas: 1
-  image: minio/minio
-  tag: latest
+  image: chrislusf/seaweedfs
+  tag: "3.80"
   storage: 10Gi
+  s3Port: 8333
   credentials:
-    rootUser: minioadmin
-    rootPassword: minioadmin
+    accessKey: seaweedadmin
+    secretKey: seaweedadmin
   bucket: iot-lakehouse
   resources:
     requests:

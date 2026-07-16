@@ -8,8 +8,8 @@ data:
   APP_KAFKA_EVENTS_TOPIC: { { .Values.kafka_topics.events | quote } }
   APP_KAFKA_AGGREGATES_TOPIC: { { .Values.kafka_topics.aggregates | quote } }
   APP_KAFKA_ALERTS_TOPIC: { { .Values.kafka_topics.alerts | quote } }
-  APP_MINIO_ENDPOINT: "minio:9000"
-  APP_MINIO_BUCKET: { { .Values.minio.bucket | quote } }
+  APP_S3_ENDPOINT: "http://seaweedfs:8333"
+  APP_S3_BUCKET: {{ .Values.seaweedfs.bucket | quote }}
   APP_SIMULATOR_NUM_SENSORS:
     { { .Values.backend.simulator.numSensors | quote } }
   APP_SIMULATOR_INTERVAL: { { .Values.backend.simulator.interval | quote } }
@@ -39,7 +39,7 @@ spec:
             - configMapRef:
                 name: backend-config
             - secretRef:
-                name: minio-credentials
+                name: seaweedfs-credentials
           resources: { { - toYaml .Values.backend.resources | nindent 12 } }
           readinessProbe:
             httpGet:
