@@ -8,6 +8,7 @@ from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
+from .archiver import archive_stats, start_archiver_thread
 from .config import settings
 from .kafka_utils import (
     aggregates_store,
@@ -28,6 +29,7 @@ _simulator_lock = threading.Lock()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     start_consumer_thread()
+    start_archiver_thread()
     logger.info("Backend started")
     yield
     global _simulator_process
@@ -85,6 +87,11 @@ def get_aggregates(limit: int = 100):
 def get_alerts(limit: int = 50):
     data = list(alerts_store)[-limit:]
     return data
+
+
+@app.get("/api/archive/status")
+def archive_status():
+    return archive_stats
 
 
 @app.post("/api/simulator/start")
