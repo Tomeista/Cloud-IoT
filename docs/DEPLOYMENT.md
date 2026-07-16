@@ -212,7 +212,7 @@ helm upgrade --install iot-monitoring ./helm \
 ```bash
 kubectl apply -f k8s/namespace.yaml
 kubectl apply -f k8s/kafka.yaml
-kubectl apply -f k8s/minio.yaml
+kubectl apply -f k8s/seaweedfs.yaml
 kubectl apply -f k8s/backend.yaml
 kubectl apply -f k8s/frontend.yaml
 kubectl apply -f k8s/flink.yaml
@@ -226,7 +226,7 @@ kubectl apply -f k8s/flink.yaml
 kubectl -n iot-monitoring get pods -w
 ```
 
-Wait until Kafka, Zookeeper, and MinIO are Running before proceeding. This may take 1–3 minutes on first pull.
+Wait until Kafka, Zookeeper, and SeaweedFS are Running before proceeding. This may take 1–3 minutes on first pull.
 
 ---
 
@@ -361,5 +361,18 @@ kubectl -n iot-monitoring logs deploy/flink-taskmanager
 | Web UI          | `http://[$SERVER_IP]:30080`                           |
 | Backend API     | `http://[$SERVER_IP]:30080/api/`                      |
 | Flink Dashboard | `kubectl port-forward svc/flink-jobmanager 8081:8081` |
-| MinIO Console   | `kubectl port-forward svc/minio 9001:9001`            |
+| SeaweedFS Filer UI | `kubectl port-forward svc/seaweedfs 8888:8888`     |
 | Kubernetes      | `kubectl -n iot-monitoring get all`                   |
+
+### Verify archived objects
+
+The backend archives raw sensor events as JSON Lines objects into the
+`iot-lakehouse` bucket on SeaweedFS. To check that archiving works:
+
+```bash
+# Archiver stats (objects_written should grow while the simulator runs)
+curl http://localhost:8000/api/archive/status
+
+# Browse the bucket in the SeaweedFS Filer UI (after port-forwarding 8888)
+# http://localhost:8888/buckets/iot-lakehouse/raw/
+```

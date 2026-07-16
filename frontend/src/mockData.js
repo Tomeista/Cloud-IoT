@@ -85,5 +85,5 @@ export const MOCK_LOGS = [
   { id: 3, level: 'error', source: 'kafka', message: 'Consumer-Lag steigt: sensor-events Partition 2 (1.2k)', timestamp: new Date(Date.now() - 90000).toISOString() },
   { id: 4, level: 'info', source: 'sensor-vibr-0007', message: 'Verbindung nach kurzem Ausfall wiederhergestellt', timestamp: new Date(Date.now() - 120000).toISOString() },
   { id: 5, level: 'warning', source: 'backend', message: '/api/aggregates: Limit von 100 Zeilen erreicht', timestamp: new Date(Date.now() - 210000).toISOString() },
-  { id: 6, level: 'info', source: 'minio', message: 'Bucket iot-lakehouse bereit', timestamp: new Date(Date.now() - 300000).toISOString() },
+  { id: 6, level: 'info', source: 'seaweedfs', message: 'Bucket iot-lakehouse bereit', timestamp: new Date(Date.now() - 300000).toISOString() },
 ];
