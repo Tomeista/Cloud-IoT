@@ -32,17 +32,16 @@ services:
     volumes:
       - kafka-data:/var/lib/kafka/data
 
-  minio:
-    image: minio/minio:latest
-    command: server /data --console-address ":9001"
+  seaweedfs:
+    image: chrislusf/seaweedfs:3.80
+    command: server -dir=/data -s3 -s3.port=8333 -s3.config=/etc/seaweedfs/s3_config.json -master.volumeSizeLimitMB=1024
     ports:
-      - "9000:9000"
-      - "9001:9001"
-    environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      - "8333:8333" # S3 API
+      - "9333:9333" # Master UI
+      - "8888:8888" # Filer UI (bucket browser)
     volumes:
-      - minio-data:/data
+      - seaweedfs-data:/data
+      - ./seaweedfs/s3_config.json:/etc/seaweedfs/s3_config.json:ro
 
   # --- Application ---
 
@@ -57,13 +56,13 @@ services:
       APP_KAFKA_EVENTS_TOPIC: sensor-events
       APP_KAFKA_AGGREGATES_TOPIC: sensor-aggregates
       APP_KAFKA_ALERTS_TOPIC: sensor-alerts
-      APP_MINIO_ENDPOINT: minio:9000
-      APP_MINIO_ACCESS_KEY: minioadmin
-      APP_MINIO_SECRET_KEY: minioadmin
-      APP_MINIO_BUCKET: iot-lakehouse
+      APP_S3_ENDPOINT: http://seaweedfs:8333
+      APP_S3_ACCESS_KEY: seaweedadmin
+      APP_S3_SECRET_KEY: seaweedadmin
+      APP_S3_BUCKET: iot-lakehouse
     depends_on:
       - kafka
-      - minio
+      - seaweedfs
 
   frontend:
     build: ./frontend
@@ -116,4 +115,4 @@ services:
 volumes:
   zookeeper-data:
   kafka-data:
-  minio-data:
+  seaweedfs-data:
