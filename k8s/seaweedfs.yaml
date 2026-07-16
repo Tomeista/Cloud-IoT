@@ -1,0 +1,107 @@
+apiVersion: v1
+kind: Secret
+metadata:
+  name: seaweedfs-credentials
+  namespace: iot-monitoring
+type: Opaque
+stringData:
+  APP_S3_ACCESS_KEY: "seaweedadmin"
+  APP_S3_SECRET_KEY: "seaweedadmin"
+  s3_config.json: |
+    {
+      "identities": [
+        {
+          "name": "iot-backend",
+          "credentials": [
+            {
+              "accessKey": "seaweedadmin",
+              "secretKey": "seaweedadmin"
+            }
+          ],
+          "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+        }
+      ]
+    }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: seaweedfs
+  namespace: iot-monitoring
+spec:
+  serviceName: seaweedfs
+  replicas: 1
+  selector:
+    matchLabels:
+      app: seaweedfs
+  template:
+    metadata:
+      labels:
+        app: seaweedfs
+    spec:
+      containers:
+        - name: seaweedfs
+          image: chrislusf/seaweedfs:3.80
+          args:
+            [
+              "server",
+              "-dir=/data",
+              "-s3",
+              "-s3.port=8333",
+              "-s3.config=/etc/seaweedfs/s3_config.json",
+              "-master.volumeSizeLimitMB=1024",
+            ]
+          ports:
+            - containerPort: 8333
+              name: s3
+            - containerPort: 9333
+              name: master
+            - containerPort: 8888
+              name: filer
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          volumeMounts:
+            - name: seaweedfs-data
+              mountPath: /data
+            - name: s3-config
+              mountPath: /etc/seaweedfs
+              readOnly: true
+      volumes:
+        - name: s3-config
+          secret:
+            secretName: seaweedfs-credentials
+            items:
+              - key: s3_config.json
+                path: s3_config.json
+  volumeClaimTemplates:
+    - metadata:
+        name: seaweedfs-data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: seaweedfs
+  namespace: iot-monitoring
+spec:
+  ports:
+    - port: 8333
+      targetPort: 8333
+      name: s3
+    - port: 9333
+      targetPort: 9333
+      name: master
+    - port: 8888
+      targetPort: 8888
+      name: filer
+  selector:
+    app: seaweedfs

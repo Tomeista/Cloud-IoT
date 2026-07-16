@@ -8,8 +8,8 @@ data:
   APP_KAFKA_EVENTS_TOPIC: "sensor-events"
   APP_KAFKA_AGGREGATES_TOPIC: "sensor-aggregates"
   APP_KAFKA_ALERTS_TOPIC: "sensor-alerts"
-  APP_MINIO_ENDPOINT: "minio:9000"
-  APP_MINIO_BUCKET: "iot-lakehouse"
+  APP_S3_ENDPOINT: "http://seaweedfs:8333"
+  APP_S3_BUCKET: "iot-lakehouse"
   APP_SIMULATOR_NUM_SENSORS: "20"
   APP_SIMULATOR_INTERVAL: "1.0"
 ---
@@ -37,7 +37,7 @@ spec:
             - configMapRef:
                 name: backend-config
             - secretRef:
-                name: minio-credentials
+                name: seaweedfs-credentials
           resources:
             requests:
               memory: "128Mi"
