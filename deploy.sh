@@ -38,7 +38,7 @@ if [ "$1" == "--manifests" ]; then
     echo "Using raw manifests..."
     kubectl apply -f k8s/namespace.yaml
     kubectl apply -f k8s/kafka.yaml
-    kubectl apply -f k8s/minio.yaml
+    kubectl apply -f k8s/seaweedfs.yaml
     kubectl apply -f k8s/backend.yaml
     kubectl apply -f k8s/frontend.yaml
     kubectl apply -f k8s/flink.yaml
@@ -61,4 +61,4 @@ echo "=== Deployment complete ==="
 echo "Frontend: http://<node-ip>:30080"
 echo "Backend API: http://<node-ip>:30080/api/health"
 echo "Flink UI: kubectl -n $NAMESPACE port-forward svc/flink-jobmanager 8081:8081"
-echo "MinIO Console: kubectl -n $NAMESPACE port-forward svc/minio 9001:9001"
+echo "SeaweedFS Filer UI: kubectl -n $NAMESPACE port-forward svc/seaweedfs 8888:8888"
