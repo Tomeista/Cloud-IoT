@@ -19,9 +19,9 @@ variable "flavor_name" {
 }
 
 variable "network_name" {
-  description = "Name of the tenant network to attach instances to."
+  description = "Name of the tenant network to attach instances to (canonical name is DHBWV6)."
   type        = string
-  default     = "DHBWv6"
+  default     = "DHBWV6"
 }
 
 variable "vm_prefix" {
@@ -90,18 +90,6 @@ variable "k8s_namespace" {
   description = "Namespace the Helm release is installed into."
   type        = string
   default     = "iot-monitoring"
-}
-
-variable "cluster_cidr" {
-  description = "k3s pod CIDR(s). Dual-stack by default (IPv6 primary)."
-  type        = string
-  default     = "fd00:cafe::/56,10.42.0.0/16"
-}
-
-variable "service_cidr" {
-  description = "k3s service CIDR(s). Dual-stack by default (IPv6 primary)."
-  type        = string
-  default     = "fd01:cafe::/112,10.43.0.0/16"
 }
 
 # --- DNS (optional, RFC2136 + TSIG) ------------------------------------------

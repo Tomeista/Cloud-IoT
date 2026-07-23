@@ -13,8 +13,6 @@ systemctl enable --now docker
 
 IP6=$(ip -6 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -n1)
 IP4=$(ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -n1)
-NODEIP="$IP6"
-[ -n "$IP4" ] && NODEIP="$IP6,$IP4"
 
 # 1. Build all images locally (matches the server so any pod can run here).
 git clone --branch ${repo_branch} --depth 1 ${repo_url} /opt/Cloud-IoT
@@ -27,7 +25,7 @@ docker build -t ${image_registry}/flink-job:latest ./flink-job
 curl -sfL https://get.k3s.io | \
   K3S_URL="https://[${server_ip}]:6443" \
   K3S_TOKEN="${token}" \
-  INSTALL_K3S_EXEC="agent --node-ip $NODEIP" sh -
+  INSTALL_K3S_EXEC="agent --node-ip $IP4" sh -
 
 # 3. Import the built images into this node's containerd.
 for img in backend frontend flink-job; do

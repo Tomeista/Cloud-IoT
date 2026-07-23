@@ -22,8 +22,6 @@ resource "openstack_compute_instance_v2" "server" {
     repo_branch    = var.repo_branch
     image_registry = var.image_registry
     namespace      = var.k8s_namespace
-    cluster_cidr   = var.cluster_cidr
-    service_cidr   = var.service_cidr
     deploy_stack   = var.deploy_stack
   })
 
