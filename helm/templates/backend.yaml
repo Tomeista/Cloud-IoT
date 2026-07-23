@@ -2,25 +2,25 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: backend-config
-  namespace: { { .Values.namespace } }
+  namespace: {{ .Values.namespace }}
 data:
   APP_KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
-  APP_KAFKA_EVENTS_TOPIC: { { .Values.kafka_topics.events | quote } }
-  APP_KAFKA_AGGREGATES_TOPIC: { { .Values.kafka_topics.aggregates | quote } }
-  APP_KAFKA_ALERTS_TOPIC: { { .Values.kafka_topics.alerts | quote } }
+  APP_KAFKA_EVENTS_TOPIC: {{ .Values.kafka_topics.events | quote }}
+  APP_KAFKA_AGGREGATES_TOPIC: {{ .Values.kafka_topics.aggregates | quote }}
+  APP_KAFKA_ALERTS_TOPIC: {{ .Values.kafka_topics.alerts | quote }}
   APP_S3_ENDPOINT: "http://seaweedfs:8333"
   APP_S3_BUCKET: {{ .Values.seaweedfs.bucket | quote }}
   APP_SIMULATOR_NUM_SENSORS:
-    { { .Values.backend.simulator.numSensors | quote } }
-  APP_SIMULATOR_INTERVAL: { { .Values.backend.simulator.interval | quote } }
+    {{ .Values.backend.simulator.numSensors | quote }}
+  APP_SIMULATOR_INTERVAL: {{ .Values.backend.simulator.interval | quote }}
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: backend
-  namespace: { { .Values.namespace } }
+  namespace: {{ .Values.namespace }}
 spec:
-  replicas: { { .Values.backend.replicas } }
+  replicas: {{ .Values.backend.replicas }}
   selector:
     matchLabels:
       app: backend
@@ -32,7 +32,7 @@ spec:
       containers:
         - name: backend
           image: "{{ .Values.imageRegistry }}/{{ .Values.backend.image }}:{{ .Values.backend.tag }}"
-          imagePullPolicy: { { .Values.imagePullPolicy } }
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
           ports:
             - containerPort: 8000
           envFrom:
@@ -40,7 +40,7 @@ spec:
                 name: backend-config
             - secretRef:
                 name: seaweedfs-credentials
-          resources: { { - toYaml .Values.backend.resources | nindent 12 } }
+          resources: {{- toYaml .Values.backend.resources | nindent 12 }}
           readinessProbe:
             httpGet:
               path: /api/health
@@ -58,7 +58,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: backend
-  namespace: { { .Values.namespace } }
+  namespace: {{ .Values.namespace }}
 spec:
   ports:
     - port: 8000
