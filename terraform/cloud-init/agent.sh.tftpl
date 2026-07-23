@@ -1,0 +1,43 @@
+#!/bin/bash
+# Bootstrap for a k3s AGENT node: build images locally, join the cluster and
+# import the images so pods scheduled here start without a registry.
+set -xuo pipefail
+exec > >(tee -a /var/log/iot-bootstrap.log) 2>&1
+echo "=== iot bootstrap (agent) started: $(date -Is) ==="
+
+export DEBIAN_FRONTEND=noninteractive
+APT="apt-get -o DPkg::Lock::Timeout=600 -y"
+$APT update
+$APT install docker.io git curl
+systemctl enable --now docker
+
+IP6=$(ip -6 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -n1)
+IP4=$(ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -n1)
+NODEIP="$IP6"
+[ -n "$IP4" ] && NODEIP="$IP6,$IP4"
+
+# 1. Build all images locally (matches the server so any pod can run here).
+git clone --branch ${repo_branch} --depth 1 ${repo_url} /opt/Cloud-IoT
+cd /opt/Cloud-IoT
+docker build -f backend/Dockerfile -t ${image_registry}/backend:latest .
+docker build -t ${image_registry}/frontend:latest ./frontend
+docker build -t ${image_registry}/flink-job:latest ./flink-job
+
+# 2. Join the cluster (retries automatically until the server API is reachable).
+curl -sfL https://get.k3s.io | \
+  K3S_URL="https://[${server_ip}]:6443" \
+  K3S_TOKEN="${token}" \
+  INSTALL_K3S_EXEC="agent --node-ip $NODEIP" sh -
+
+# 3. Import the built images into this node's containerd.
+for img in backend frontend flink-job; do
+  docker save ${image_registry}/$img:latest -o /tmp/$img.tar
+  k3s ctr images import /tmp/$img.tar
+  rm -f /tmp/$img.tar
+  docker rmi ${image_registry}/$img:latest || true
+done
+# Free the docker build cache and layers now that k3s has its own copies.
+docker system prune -af || true
+
+echo "=== iot bootstrap (agent) finished: $(date -Is) ==="
+touch /var/log/iot-bootstrap.done
