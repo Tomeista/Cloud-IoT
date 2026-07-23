@@ -375,3 +375,21 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Terraform
+**/.terraform/
+**/.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+**/generated-inventory.yml
+
+# OpenStack credentials — NEVER commit these
+clouds.yaml
+clouds.yml
+*-openrc.sh
