@@ -1,0 +1,74 @@
+#!/bin/bash
+# Bootstrap for the k3s SERVER node: build images locally, install k3s,
+# import the images into containerd, then deploy the stack via Helm.
+set -xuo pipefail
+exec > >(tee -a /var/log/iot-bootstrap.log) 2>&1
+echo "=== iot bootstrap (server) started: $(date -Is) ==="
+
+export DEBIAN_FRONTEND=noninteractive
+APT="apt-get -o DPkg::Lock::Timeout=600 -y"
+$APT update
+$APT install docker.io git curl
+systemctl enable --now docker
+
+# Detect this node's addresses (IPv6 is primary on the DHBWv6 network; the
+# private IPv4 exists for NAT egress and is added for dual-stack).
+IP6=$(ip -6 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -n1)
+IP4=$(ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -n1)
+NODEIP="$IP6"
+[ -n "$IP4" ] && NODEIP="$IP6,$IP4"
+
+# 1. Clone the repo and build all images locally (every node does this, so no
+#    registry or cross-node image copying is required; k3s uses IfNotPresent).
+git clone --branch ${repo_branch} --depth 1 ${repo_url} /opt/Cloud-IoT
+cd /opt/Cloud-IoT
+docker build -f backend/Dockerfile -t ${image_registry}/backend:latest .
+docker build -t ${image_registry}/frontend:latest ./frontend
+docker build -t ${image_registry}/flink-job:latest ./flink-job
+
+# 2. Install the k3s server (dual-stack). The token is shared with the agents.
+curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server \
+  --token ${token} \
+  --cluster-cidr ${cluster_cidr} \
+  --service-cidr ${service_cidr} \
+  --node-ip $NODEIP \
+  --tls-san $IP6 \
+  --write-kubeconfig-mode 644" sh -
+
+# 3. Import the freshly built images into k3s' containerd (k8s.io namespace).
+for img in backend frontend flink-job; do
+  docker save ${image_registry}/$img:latest -o /tmp/$img.tar
+  k3s ctr images import /tmp/$img.tar
+  rm -f /tmp/$img.tar
+  docker rmi ${image_registry}/$img:latest || true
+done
+# Free the docker build cache and layers now that k3s has its own copies.
+docker system prune -af || true
+
+export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+echo "Waiting for the server node to become Ready..."
+until k3s kubectl get node --no-headers 2>/dev/null | grep -q ' Ready'; do sleep 5; done
+
+%{ if deploy_stack ~}
+# 4. Install Helm and deploy the stack.
+curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
+helm upgrade --install iot-monitoring /opt/Cloud-IoT/helm \
+  --namespace ${namespace} --create-namespace \
+  --set imageRegistry=${image_registry} \
+  --set imagePullPolicy=IfNotPresent
+
+# 5. Submit the PyFlink job once the JobManager is up (retry a few times).
+k3s kubectl -n ${namespace} rollout status deploy/flink-jobmanager --timeout=300s || true
+for i in $(seq 1 12); do
+  if k3s kubectl -n ${namespace} exec deploy/flink-jobmanager -- \
+       flink run -d -py /opt/flink/job/job.py; then
+    echo "Flink job submitted."
+    break
+  fi
+  echo "Flink job submit attempt $i failed; retrying in 15s..."
+  sleep 15
+done
+%{ endif ~}
+
+echo "=== iot bootstrap (server) finished: $(date -Is) ==="
+touch /var/log/iot-bootstrap.done

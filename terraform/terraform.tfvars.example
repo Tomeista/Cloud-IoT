@@ -1,0 +1,43 @@
+# Copy to terraform.tfvars and adjust. terraform.tfvars is gitignored.
+
+# --- Authentication ----------------------------------------------------------
+# Credentials live in clouds.yaml (put it in this directory, gitignored). The
+# entry name below must match the top-level key in that file. No secret here.
+os_cloud = "openstack"
+
+# Name prefix for all resources.
+vm_prefix = "iot"
+
+# Number of worker nodes (one server node is always created).
+agent_count = 2
+
+# SSH keypair:
+#   Option A – let Terraform upload your public key (recommended):
+key_pair_name   = "iot-key"
+public_key_path = "~/.ssh/id_ed25519.pub"
+#   Option B – reuse a key already uploaded in the dashboard: set key_pair_name
+#   to that name and leave public_key_path = "".
+
+# --- One-apply auto-deploy (cloud-init) --------------------------------------
+# With deploy_stack = true (default) a single `terraform apply` provisions the
+# VMs, installs k3s, builds the images on every node and deploys the full stack.
+# Each node clones repo_url@repo_branch, so PUSH YOUR LATEST CHANGES FIRST and
+# make sure the repo is public (or the clone will fail).
+deploy_stack = true
+repo_url     = "https://github.com/Tomeista/Cloud-IoT"
+repo_branch  = "main"
+
+# Set deploy_stack = false to only bring up the bare k3s cluster.
+
+# --- DNS (optional, RFC2136/TSIG) --------------------------------------------
+# Publish an AAAA record for the server into your DHBW dynamic-DNS zone, so the
+# UI is reachable by name. Keys are the USER_KEY/SECRET_KEY from your .env.
+# enable_dns     = true
+# dns_zone       = "sXXXXXX-at-student-dhbw-mannheim-de.users.dhbw.site"
+# dns_key_name   = "user-key-..."   # = USER_KEY
+# dns_key_secret = "..."            # = SECRET_KEY (keep out of Git)
+
+# Optional overrides (defaults shown):
+# flavor_name  = "k8s.node"   # 4 vCPU / 8 GB / 50 GB — 50 GB disk needed for the stack
+# network_name = "DHBWv6"
+# image_id     = "7842eb53-0ac7-4677-9160-2466371b4302" # Ubuntu Server 24.04
