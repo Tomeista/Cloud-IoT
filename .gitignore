@@ -393,3 +393,5 @@ crash.*.log
 clouds.yaml
 clouds.yml
 *-openrc.sh
+
+.claude/

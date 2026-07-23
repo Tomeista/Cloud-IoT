@@ -11,12 +11,12 @@ $APT update
 $APT install docker.io git curl
 systemctl enable --now docker
 
-# Detect this node's addresses (IPv6 is primary on the DHBWv6 network; the
-# private IPv4 exists for NAT egress and is added for dual-stack).
+# Detect this node's addresses. The cluster runs single-stack IPv4 internally
+# (reliable: dual-stack IPv6 broke kube-proxy/CoreDNS on this cloud). IPv6 is
+# kept only as the external address; a socat bridge exposes the web NodePort
+# over IPv6 further down.
 IP6=$(ip -6 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -n1)
 IP4=$(ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -n1)
-NODEIP="$IP6"
-[ -n "$IP4" ] && NODEIP="$IP6,$IP4"
 
 # 1. Clone the repo and build all images locally (every node does this, so no
 #    registry or cross-node image copying is required; k3s uses IfNotPresent).
@@ -26,13 +26,13 @@ docker build -f backend/Dockerfile -t ${image_registry}/backend:latest .
 docker build -t ${image_registry}/frontend:latest ./frontend
 docker build -t ${image_registry}/flink-job:latest ./flink-job
 
-# 2. Install the k3s server (dual-stack). The token is shared with the agents.
+# 2. Install the k3s server (single-stack IPv4 for cluster networking; IPv6 is
+#    recorded as the external address). The token is shared with the agents.
 curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="server \
   --token ${token} \
-  --cluster-cidr ${cluster_cidr} \
-  --service-cidr ${service_cidr} \
-  --node-ip $NODEIP \
+  --node-ip $IP4 \
   --tls-san $IP6 \
+  --tls-san $IP4 \
   --write-kubeconfig-mode 644" sh -
 
 # 3. Import the freshly built images into k3s' containerd (k8s.io namespace).
@@ -44,6 +44,23 @@ for img in backend frontend flink-job; do
 done
 # Free the docker build cache and layers now that k3s has its own copies.
 docker system prune -af || true
+
+# 3b. Expose the web NodePort (IPv4-only in an IPv4 cluster) to external IPv6
+#     clients. socat listens on [::]:30080 and forwards to the local NodePort.
+$APT install socat
+cat >/etc/systemd/system/nodeport-ipv6-bridge.service <<'UNIT'
+[Unit]
+Description=IPv6 to IPv4 bridge for k3s web NodePort 30080
+After=network-online.target
+[Service]
+ExecStart=/usr/bin/socat TCP6-LISTEN:30080,fork,reuseaddr TCP4:127.0.0.1:30080
+Restart=always
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now nodeport-ipv6-bridge
 
 export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
 echo "Waiting for the server node to become Ready..."
