@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simulator
+  namespace: {{ .Values.namespace }}
+spec:
+  replicas: {{ .Values.simulator.replicas }}
+  selector:
+    matchLabels:
+      app: simulator
+  template:
+    metadata:
+      labels:
+        app: simulator
+    spec:
+      containers:
+        - name: simulator
+          # Reuse the backend image; sensor_simulator.py ships inside it.
+          image: "{{ .Values.imageRegistry }}/{{ .Values.backend.image }}:{{ .Values.backend.tag }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command:
+            - python
+            - /app/sensor_simulator.py
+            - --output
+            - kafka
+            - --kafka-bootstrap
+            - "kafka:9092"
+            - --kafka-topic
+            - {{ .Values.kafka_topics.events | quote }}
+            - --num-sensors
+            - {{ .Values.simulator.numSensors | quote }}
+            - --interval
+            - {{ .Values.simulator.interval | quote }}
+          resources: {{- toYaml .Values.simulator.resources | nindent 12 }}

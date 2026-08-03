@@ -1,11 +1,8 @@
 import logging
-import subprocess
-import sys
-import threading
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .archiver import archive_stats, start_archiver_thread
@@ -21,10 +18,6 @@ from .models import SensorEvent
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Simulator process management
-_simulator_process: subprocess.Popen | None = None
-_simulator_lock = threading.Lock()
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -32,10 +25,6 @@ async def lifespan(app: FastAPI):
     start_archiver_thread()
     logger.info("Backend started")
     yield
-    global _simulator_process
-    if _simulator_process:
-        _simulator_process.terminate()
-        _simulator_process = None
     logger.info("Backend shutdown")
 
 
@@ -92,49 +81,3 @@ def get_alerts(limit: int = 50):
 @app.get("/api/archive/status")
 def archive_status():
     return archive_stats
-
-
-@app.post("/api/simulator/start")
-def start_simulator():
-    global _simulator_process
-    with _simulator_lock:
-        if _simulator_process and _simulator_process.poll() is None:
-            raise HTTPException(status_code=409, detail="Simulator already running")
-
-        _simulator_process = subprocess.Popen(
-            [
-                sys.executable,
-                "/app/sensor_simulator.py",
-                "--output",
-                "kafka",
-                "--kafka-bootstrap",
-                settings.kafka_bootstrap_servers,
-                "--kafka-topic",
-                settings.kafka_events_topic,
-                "--num-sensors",
-                str(settings.simulator_num_sensors),
-                "--interval",
-                str(settings.simulator_interval),
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-        )
-    return {"status": "started", "pid": _simulator_process.pid}
-
-
-@app.post("/api/simulator/stop")
-def stop_simulator():
-    global _simulator_process
-    with _simulator_lock:
-        if not _simulator_process or _simulator_process.poll() is not None:
-            raise HTTPException(status_code=404, detail="No simulator running")
-        _simulator_process.terminate()
-        _simulator_process = None
-    return {"status": "stopped"}
-
-
-@app.get("/api/simulator/status")
-def simulator_status():
-    if _simulator_process and _simulator_process.poll() is None:
-        return {"running": True, "pid": _simulator_process.pid}
-    return {"running": False}

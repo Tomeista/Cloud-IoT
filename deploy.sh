@@ -42,6 +42,7 @@ if [ "$1" == "--manifests" ]; then
     kubectl apply -f k8s/backend.yaml
     kubectl apply -f k8s/frontend.yaml
     kubectl apply -f k8s/flink.yaml
+    kubectl apply -f k8s/simulator.yaml
 else
     # Option 2: Helm (default)
     echo "Using Helm chart..."
