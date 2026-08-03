@@ -42,6 +42,20 @@ backend:
       memory: "256Mi"
       cpu: "500m"
 
+# Sensor data simulator - continuous producer that feeds Kafka.
+# Reuses the backend image (sensor_simulator.py is baked in at /app).
+simulator:
+  replicas: 1
+  numSensors: 20
+  interval: 1.0
+  resources:
+    requests:
+      memory: "64Mi"
+      cpu: "50m"
+    limits:
+      memory: "128Mi"
+      cpu: "200m"
+
 # Apache Kafka
 kafka:
   replicas: 1

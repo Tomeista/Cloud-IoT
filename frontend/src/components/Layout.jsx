@@ -15,7 +15,6 @@ import {
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import DashboardIcon from '@mui/icons-material/Dashboard';
-import SendIcon from '@mui/icons-material/Send';
 import SensorsIcon from '@mui/icons-material/Sensors';
 import ShowChartIcon from '@mui/icons-material/ShowChart';
 import { useLiveData } from '../LiveDataContext';
@@ -25,7 +24,6 @@ const DRAWER_WIDTH = 240;
 const navItems = [
   { label: 'Dashboard', path: '/dashboard', icon: <DashboardIcon /> },
   { label: 'Sensors', path: '/sensors', icon: <ShowChartIcon /> },
-  { label: 'Producer', path: '/producer', icon: <SendIcon /> },
 ];
 
 function Layout() {

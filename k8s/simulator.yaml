@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: simulator
+  namespace: iot-monitoring
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: simulator
+  template:
+    metadata:
+      labels:
+        app: simulator
+    spec:
+      containers:
+        - name: simulator
+          # Reuse the backend image; sensor_simulator.py ships inside it.
+          image: iot-monitoring/backend:latest
+          command:
+            - python
+            - /app/sensor_simulator.py
+            - --output
+            - kafka
+            - --kafka-bootstrap
+            - "kafka:9092"
+            - --kafka-topic
+            - "sensor-events"
+            - --num-sensors
+            - "20"
+            - --interval
+            - "1.0"
+          resources:
+            requests:
+              memory: "64Mi"
+              cpu: "50m"
+            limits:
+              memory: "128Mi"
+              cpu: "200m"
