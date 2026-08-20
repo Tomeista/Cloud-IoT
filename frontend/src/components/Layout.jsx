@@ -35,7 +35,12 @@ function Layout() {
   const drawer = (
     <Box>
       <Toolbar sx={{ gap: 1 }}>
-        <SensorsIcon color="primary" />
+        <Box
+          component="img"
+          src="/icon.png"
+          alt="IoT Monitor logo"
+          sx={{ width: 28, height: 28, borderRadius: 1 }}
+        />
         <Typography variant="h6" noWrap sx={{ fontSize: '1rem' }}>
           IoT Monitor
         </Typography>
