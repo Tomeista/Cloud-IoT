@@ -16,7 +16,7 @@ import time
 
 from pyflink.common import Row, Types, WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
-from pyflink.common.time import Duration
+from pyflink.common.time import Duration, Time
 from pyflink.common.watermark_strategy import TimestampAssigner
 from pyflink.datastream import (
     StreamExecutionEnvironment,
@@ -247,7 +247,7 @@ def main():
     )
 
     aggregates_stream = keyed_stream.window(
-        TumblingEventTimeWindows.of(Duration.of_minutes(1))
+        TumblingEventTimeWindows.of(Time.minutes(1))
     ).process(WindowAggregateFunction(), output_type=Types.STRING())
 
     # Branch 2: Stateful alerting
