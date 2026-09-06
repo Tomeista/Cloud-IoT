@@ -2,6 +2,7 @@ import json
 import logging
 import threading
 import time
+import uuid
 from collections import deque
 
 from kafka import KafkaConsumer, KafkaProducer
@@ -13,6 +14,14 @@ logger = logging.getLogger(__name__)
 
 _producer: KafkaProducer | None = None
 _producer_lock = threading.Lock()
+
+# Every replica needs the *whole* result stream, because any replica may serve
+# any /api/aggregates request. A shared group id would make Kafka split the
+# partitions between replicas, leaving each one with a partial view and making
+# the dashboard flicker as requests are load-balanced. So each process joins
+# under its own group id and receives every partition. (The archiver is the
+# opposite case: it shares one group so each record is written to S3 once.)
+_SERVING_GROUP_ID = f"backend-serving-{uuid.uuid4().hex[:8]}"
 
 
 def get_producer() -> KafkaProducer | None:
@@ -63,11 +72,17 @@ def _consume_results():
                 settings.kafka_alerts_topic,
                 bootstrap_servers=settings.kafka_bootstrap_servers,
                 value_deserializer=lambda m: json.loads(m.decode("utf-8")),
-                group_id="backend-serving",
+                group_id=_SERVING_GROUP_ID,
                 auto_offset_reset="latest",
+                # Offsets are meaningless for a per-process group that always
+                # starts from the latest record; not committing keeps Kafka
+                # from accumulating one stale group per restart.
+                enable_auto_commit=False,
                 consumer_timeout_ms=1000,
             )
-            logger.info("Kafka consumer connected for results")
+            logger.info(
+                "Kafka consumer connected for results (group %s)", _SERVING_GROUP_ID
+            )
             while True:
                 records = consumer.poll(timeout_ms=1000)
                 for topic_partition, messages in records.items():
