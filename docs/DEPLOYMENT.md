@@ -366,13 +366,26 @@ kubectl -n iot-monitoring logs deploy/flink-taskmanager
 
 ### Verify archived objects
 
-The backend archives raw sensor events as JSON Lines objects into the
-`iot-lakehouse` bucket on SeaweedFS. To check that archiving works:
+The backend archives three datasets as JSON Lines objects into the
+`iot-lakehouse` bucket on SeaweedFS — the raw input and both result streams,
+each partitioned by event time:
+
+```
+iot-lakehouse/
+  raw/dt=YYYY-MM-DD/hour=HH/*.jsonl          # every ingested sensor event
+  aggregates/dt=YYYY-MM-DD/hour=HH/*.jsonl   # 1-minute windowed statistics
+  alerts/dt=YYYY-MM-DD/hour=HH/*.jsonl       # sustained threshold breaches
+```
+
+To check that archiving works:
 
 ```bash
-# Archiver stats (objects_written should grow while the simulator runs)
+# Archiver stats, broken down per dataset (counters grow while data flows)
 curl http://localhost:8000/api/archive/status
 
 # Browse the bucket in the SeaweedFS Filer UI (after port-forwarding 8888)
-# http://localhost:8888/buckets/iot-lakehouse/raw/
+# http://localhost:8888/buckets/iot-lakehouse/
 ```
+
+`aggregates` and `alerts` only appear once the Flink job has produced its first
+window (~60 s after events start flowing).

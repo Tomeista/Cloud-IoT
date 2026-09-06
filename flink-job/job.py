@@ -187,13 +187,17 @@ class WindowAggregateFunction(ProcessWindowFunction):
         window = context.window()
         from datetime import datetime, timezone
 
+        start_dt = datetime.fromtimestamp(window.start / 1000, tz=timezone.utc)
+        end_dt = datetime.fromtimestamp(window.end / 1000, tz=timezone.utc)
+
         aggregate = {
-            "window_start": datetime.fromtimestamp(
-                window.start / 1000, tz=timezone.utc
-            ).strftime("%H:%M"),
-            "window_end": datetime.fromtimestamp(
-                window.end / 1000, tz=timezone.utc
-            ).strftime("%H:%M"),
+            # Short labels the dashboard renders on chart axes and tables.
+            "window_start": start_dt.strftime("%H:%M"),
+            "window_end": end_dt.strftime("%H:%M"),
+            # Full timestamps: the archived records need an unambiguous date to
+            # be partitioned by event time and to stay readable in the lake.
+            "window_start_ts": start_dt.isoformat(),
+            "window_end_ts": end_dt.isoformat(),
             "sensor_id": key,
             "sensor_type": sensor_type,
             "location": location,
