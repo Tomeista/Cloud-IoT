@@ -9,6 +9,7 @@ Schema: sensor_id, event_time, sensor_type, value, unit, location
 
 import argparse
 import json
+import os
 import random
 import sys
 import time
@@ -21,6 +22,11 @@ SENSOR_TYPES = {
     "humidity": {"min": 0.0, "max": 100.0, "unit": "%", "drift": 1.0},
     "vibration": {"min": 0.0, "max": 50.0, "unit": "mm/s", "drift": 0.8},
 }
+
+DEFAULT_NUM_SENSORS = 100
+
+# Catalogue shared with the Flink job; same env var name the job uses.
+DEFAULT_METADATA_PATH = os.environ.get("METADATA_PATH", "/app/metadata.json")
 
 LOCATIONS = [
     "Hall-A1",
@@ -97,11 +103,45 @@ class Sensor:
         )
 
 
+def load_catalogue(path: str) -> dict:
+    """Load the sensor catalogue the Flink job also uses for enrichment.
+
+    Building the fleet from that same file keeps the two in step: every
+    emitted sensor_id then resolves to a real group/description instead of
+    falling through to "Unknown". Returns {} when the file is absent, so a
+    standalone run still works without it.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            sensors = json.load(f).get("sensors", {})
+    except (OSError, ValueError) as e:
+        print(
+            f"No usable sensor catalogue at {path} ({e}); "
+            "falling back to a randomly generated fleet.",
+            file=sys.stderr,
+        )
+        return {}
+
+    return {
+        sensor_id: meta
+        for sensor_id, meta in sensors.items()
+        if meta.get("sensor_type") in SENSOR_TYPES and meta.get("location")
+    }
+
+
 class SensorFleet:
     """Manages a fleet of sensors."""
 
-    def __init__(self, num_sensors: int):
+    def __init__(self, num_sensors: int, catalogue: dict | None = None):
         self.sensors: list[Sensor] = []
+
+        if catalogue:
+            for sensor_id, meta in catalogue.items():
+                self.sensors.append(
+                    Sensor(sensor_id, meta["sensor_type"], meta["location"])
+                )
+            return
+
         for i in range(num_sensors):
             sensor_type = random.choice(list(SENSOR_TYPES.keys()))
             location = random.choice(LOCATIONS)
@@ -141,17 +181,30 @@ def output_kafka(events: list[SensorEvent], bootstrap_servers: str, topic: str):
 
 
 def run_simulator(args):
-    fleet = SensorFleet(args.num_sensors)
-    events_per_tick = (
-        max(1, args.num_sensors // 10) if args.batch_size == 0 else args.batch_size
-    )
+    catalogue = load_catalogue(args.metadata) if args.metadata else {}
+    fleet = SensorFleet(args.num_sensors, catalogue)
+    fleet_size = len(fleet.sensors)
 
+    if args.batch_size > 0:
+        events_per_tick = args.batch_size
+    elif catalogue:
+        # A known fleet: every sensor reports once per interval.
+        events_per_tick = fleet_size
+    else:
+        events_per_tick = max(1, fleet_size // 10)
+
+    source = f"catalogue {args.metadata}" if catalogue else "random fleet"
     print(
-        f"Starting simulator: {args.num_sensors} sensors, "
+        f"Starting simulator: {fleet_size} sensors ({source}), "
         f"{events_per_tick} events every {args.interval}s, "
         f"output={args.output}",
         file=sys.stderr,
     )
+    if catalogue and args.num_sensors != DEFAULT_NUM_SENSORS:
+        print(
+            "  note: the catalogue defines the fleet, so --num-sensors is ignored.",
+            file=sys.stderr,
+        )
 
     total_events = 0
     try:
@@ -184,8 +237,22 @@ def main():
     parser.add_argument(
         "--num-sensors",
         type=int,
-        default=100,
-        help="Number of sensors in the fleet (default: 100)",
+        default=DEFAULT_NUM_SENSORS,
+        help=(
+            f"Sensors in the fleet (default: {DEFAULT_NUM_SENSORS}). Ignored when "
+            "a sensor catalogue is found, which then defines the fleet."
+        ),
+    )
+    parser.add_argument(
+        "--metadata",
+        type=str,
+        default=DEFAULT_METADATA_PATH,
+        help=(
+            "Sensor catalogue shared with the Flink job's enrichment metadata "
+            f"(default: {DEFAULT_METADATA_PATH}). When present it defines the "
+            "fleet, so emitted sensor_ids match what the job can enrich. "
+            "Pass an empty string to force a randomly generated fleet."
+        ),
     )
     parser.add_argument(
         "--interval",

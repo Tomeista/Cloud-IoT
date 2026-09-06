@@ -10,9 +10,6 @@ data:
   APP_KAFKA_ALERTS_TOPIC: {{ .Values.kafka_topics.alerts | quote }}
   APP_S3_ENDPOINT: "http://seaweedfs:8333"
   APP_S3_BUCKET: {{ .Values.seaweedfs.bucket | quote }}
-  APP_SIMULATOR_NUM_SENSORS:
-    {{ .Values.backend.simulator.numSensors | quote }}
-  APP_SIMULATOR_INTERVAL: {{ .Values.backend.simulator.interval | quote }}
 ---
 apiVersion: apps/v1
 kind: Deployment

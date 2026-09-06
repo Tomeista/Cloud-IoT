@@ -14,9 +14,6 @@ class Settings(BaseSettings):
     s3_archive_max_batch: int = 500
     s3_archive_flush_seconds: int = 60
 
-    simulator_num_sensors: int = 20
-    simulator_interval: float = 1.0
-
     class Config:
         env_prefix = "APP_"
 
