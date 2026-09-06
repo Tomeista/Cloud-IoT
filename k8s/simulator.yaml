@@ -26,8 +26,6 @@ spec:
             - "kafka:9092"
             - --kafka-topic
             - "sensor-events"
-            - --num-sensors
-            - "20"
             - --interval
             - "1.0"
           resources:

@@ -31,9 +31,6 @@ backend:
   tag: latest
   service:
     port: 8000
-  simulator:
-    numSensors: 20
-    interval: 1.0
   resources:
     requests:
       memory: "128Mi"
@@ -44,9 +41,11 @@ backend:
 
 # Sensor data simulator - continuous producer that feeds Kafka.
 # Reuses the backend image (sensor_simulator.py is baked in at /app).
+# The fleet comes from the sensor catalogue shipped at /app/metadata.json --
+# the same file the Flink job enriches against -- so there is no sensor count
+# to configure here.
 simulator:
   replicas: 1
-  numSensors: 20
   interval: 1.0
   resources:
     requests:

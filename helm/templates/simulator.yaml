@@ -27,8 +27,6 @@ spec:
             - "kafka:9092"
             - --kafka-topic
             - {{ .Values.kafka_topics.events | quote }}
-            - --num-sensors
-            - {{ .Values.simulator.numSensors | quote }}
             - --interval
             - {{ .Values.simulator.interval | quote }}
           resources: {{- toYaml .Values.simulator.resources | nindent 12 }}

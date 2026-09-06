@@ -10,8 +10,6 @@ data:
   APP_KAFKA_ALERTS_TOPIC: "sensor-alerts"
   APP_S3_ENDPOINT: "http://seaweedfs:8333"
   APP_S3_BUCKET: "iot-lakehouse"
-  APP_SIMULATOR_NUM_SENSORS: "20"
-  APP_SIMULATOR_INTERVAL: "1.0"
 ---
 apiVersion: apps/v1
 kind: Deployment
