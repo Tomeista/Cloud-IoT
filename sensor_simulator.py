@@ -4,7 +4,7 @@ IoT Sensor Data Simulator
 Generates synthetic sensor data (Temperature, Pressure, Humidity, Vibration)
 and publishes to Kafka or outputs to stdout/file.
 
-Schema: sensor_id, timestamp, type, value, unit, location
+Schema: sensor_id, event_time, sensor_type, value, unit, location
 """
 
 import argparse
@@ -40,9 +40,16 @@ LOCATIONS = [
 
 @dataclass
 class SensorEvent:
+    """Wire format of an emitted reading.
+
+    Field names match backend.app.models.SensorEvent, which is what the Flink
+    job expects: it derives watermarks from event_time and looks up alert
+    thresholds by sensor_type.
+    """
+
     sensor_id: str
-    timestamp: str
-    type: str
+    event_time: str
+    sensor_type: str
     value: float
     unit: str
     location: str
@@ -51,11 +58,11 @@ class SensorEvent:
 class Sensor:
     """Simulates a single sensor with realistic value drift."""
 
-    def __init__(self, sensor_id: str, type: str, location: str):
+    def __init__(self, sensor_id: str, sensor_type: str, location: str):
         self.sensor_id = sensor_id
-        self.type = type
+        self.sensor_type = sensor_type
         self.location = location
-        config = SENSOR_TYPES[type]
+        config = SENSOR_TYPES[sensor_type]
         self.min_val = config["min"]
         self.max_val = config["max"]
         self.unit = config["unit"]
@@ -82,8 +89,8 @@ class Sensor:
 
         return SensorEvent(
             sensor_id=self.sensor_id,
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            type=self.type,
+            event_time=datetime.now(timezone.utc).isoformat(),
+            sensor_type=self.sensor_type,
             value=round(self.current_value, 2),
             unit=self.unit,
             location=self.location,
