@@ -28,6 +28,7 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 3
       KAFKA_OPTS: "-Djava.net.preferIPv6Addresses=true"
     volumes:
       - kafka-data:/var/lib/kafka/data
@@ -56,6 +57,7 @@ services:
       APP_KAFKA_EVENTS_TOPIC: sensor-events
       APP_KAFKA_AGGREGATES_TOPIC: sensor-aggregates
       APP_KAFKA_ALERTS_TOPIC: sensor-alerts
+      APP_KAFKA_LATE_TOPIC: sensor-late-events
       APP_S3_ENDPOINT: http://seaweedfs:8333
       APP_S3_ACCESS_KEY: seaweedadmin
       APP_S3_SECRET_KEY: seaweedadmin
@@ -83,6 +85,7 @@ services:
       KAFKA_EVENTS_TOPIC: sensor-events
       KAFKA_AGGREGATES_TOPIC: sensor-aggregates
       KAFKA_ALERTS_TOPIC: sensor-alerts
+      KAFKA_LATE_TOPIC: sensor-late-events
       METADATA_PATH: /opt/flink/job/metadata.json
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager
@@ -101,6 +104,7 @@ services:
       KAFKA_EVENTS_TOPIC: sensor-events
       KAFKA_AGGREGATES_TOPIC: sensor-aggregates
       KAFKA_ALERTS_TOPIC: sensor-alerts
+      KAFKA_LATE_TOPIC: sensor-late-events
       METADATA_PATH: /opt/flink/job/metadata.json
       FLINK_PROPERTIES: |
         jobmanager.rpc.address: flink-jobmanager

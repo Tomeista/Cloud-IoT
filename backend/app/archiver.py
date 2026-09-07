@@ -33,6 +33,7 @@ _TIME_FIELD = {
     "raw": "event_time",
     "aggregates": "window_start_ts",
     "alerts": "timestamp",
+    "late": "event_time",
 }
 
 
@@ -40,14 +41,18 @@ def _dataset_topics() -> dict[str, str]:
     """Kafka topic -> dataset prefix in the lake.
 
     `raw` is the immutable landing zone (every event as ingested); `aggregates`
-    and `alerts` are the stream job's results. Archiving all three means the
+    and `alerts` are the stream job's results. Archiving all of them means the
     lake holds both the input and the output of the pipeline, so results
     survive a restart instead of living only in the serving layer's memory.
+    `late` holds events the stream job dropped for arriving past their window's
+    allowed lateness -- keeping them makes the loss auditable rather than
+    invisible.
     """
     return {
         settings.kafka_events_topic: "raw",
         settings.kafka_aggregates_topic: "aggregates",
         settings.kafka_alerts_topic: "alerts",
+        settings.kafka_late_topic: "late",
     }
 
 
@@ -145,6 +150,8 @@ def _archive_loop():
                 value_deserializer=lambda m: json.loads(m.decode("utf-8")),
                 group_id="backend-archiver",
                 auto_offset_reset="latest",
+                # Committed manually once a batch is durably in S3; see below.
+                enable_auto_commit=False,
             )
             logger.info("Kafka consumer connected for archiver: %s", ", ".join(topics))
             while True:
@@ -184,6 +191,15 @@ def _archive_loop():
                         )
                         s3 = None
                         del buffers[dataset][:-_MAX_BUFFERED_EVENTS]
+
+                # Acknowledge the consumed records only once every buffer has
+                # reached S3. Auto-commit would advance the offsets while
+                # records were still held in memory, so a pod restart would
+                # drop them without a trace. Committing late instead means a
+                # crash mid-flush replays a batch: duplicates in the lake, but
+                # no silent loss.
+                if due and not any(buffers.values()):
+                    consumer.commit()
         except NoBrokersAvailable:
             logger.warning("Kafka not available for archiver, retrying in 5s...")
             time.sleep(5)

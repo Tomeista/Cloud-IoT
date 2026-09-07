@@ -38,6 +38,14 @@ const LINE_COLORS = [
 
 const DIMENSION_LABEL = { group: 'Gruppe', type: 'Sensortyp', sensor: 'Sensor' };
 
+// Chronological key of an aggregate. `window_start` is only an "HH:MM" label
+// for the axis, so ordering by it would interleave windows from different days
+// and collapse yesterday's 14:05 into today's. The full timestamp is on the
+// record for exactly this reason; fall back to the label when it is absent.
+const windowKey = (row) => row.window_start_ts || row.window_start;
+
+const byWindowAsc = (a, b) => windowKey(a).localeCompare(windowKey(b));
+
 function SensorsView() {
   const { aggregates } = useLiveData();
   const [dimension, setDimension] = useState('type');
@@ -70,17 +78,21 @@ function SensorsView() {
   // avg/min/max for a single sensor.
   const { chartData, seriesKeys } = useMemo(() => {
     if (singleSensor) {
-      const sorted = [...rows].sort((a, b) => a.window_start.localeCompare(b.window_start));
+      const sorted = [...rows].sort(byWindowAsc);
       return { chartData: sorted, seriesKeys: ['avg_value', 'min_value', 'max_value'] };
     }
+    // Group by the chronological key so two same-labelled windows from
+    // different days stay separate points, but plot the short label.
     const byWindow = {};
     rows.forEach((r) => {
-      byWindow[r.window_start] = byWindow[r.window_start] || { window_start: r.window_start };
-      byWindow[r.window_start][r.sensor_id] = r.avg_value;
+      const key = windowKey(r);
+      byWindow[key] = byWindow[key] || {
+        window_start: r.window_start,
+        window_start_ts: r.window_start_ts,
+      };
+      byWindow[key][r.sensor_id] = r.avg_value;
     });
-    const data = Object.values(byWindow).sort((a, b) =>
-      a.window_start.localeCompare(b.window_start),
-    );
+    const data = Object.values(byWindow).sort(byWindowAsc);
     const sensors = [...new Set(rows.map((r) => r.sensor_id))].sort();
     return { chartData: data, seriesKeys: sensors };
   }, [rows, singleSensor]);
@@ -92,9 +104,7 @@ function SensorsView() {
       ? SENSOR_TYPES[current]?.unit || ''
       : '';
 
-  const tableRows = [...rows]
-    .sort((a, b) => b.window_start.localeCompare(a.window_start))
-    .slice(0, 15);
+  const tableRows = [...rows].sort((a, b) => byWindowAsc(b, a)).slice(0, 15);
 
   return (
     <Box>

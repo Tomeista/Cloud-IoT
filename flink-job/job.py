@@ -14,14 +14,11 @@ import logging
 import os
 import time
 
-from pyflink.common import Row, Types, WatermarkStrategy
+from pyflink.common import Types, WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
 from pyflink.common.time import Duration, Time
 from pyflink.common.watermark_strategy import TimestampAssigner
-from pyflink.datastream import (
-    StreamExecutionEnvironment,
-    TimeCharacteristic,
-)
+from pyflink.datastream import StreamExecutionEnvironment, OutputTag
 from pyflink.datastream.connectors.kafka import (
     KafkaOffsetsInitializer,
     KafkaRecordSerializationSchema,
@@ -44,7 +41,23 @@ KAFKA_BOOTSTRAP = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092")
 INPUT_TOPIC = os.environ.get("KAFKA_EVENTS_TOPIC", "sensor-events")
 AGGREGATES_TOPIC = os.environ.get("KAFKA_AGGREGATES_TOPIC", "sensor-aggregates")
 ALERTS_TOPIC = os.environ.get("KAFKA_ALERTS_TOPIC", "sensor-alerts")
+LATE_TOPIC = os.environ.get("KAFKA_LATE_TOPIC", "sensor-late-events")
 METADATA_PATH = os.environ.get("METADATA_PATH", "/opt/flink/job/metadata.json")
+
+# How long a window stays open for stragglers after its watermark has passed.
+# Events later than this are dropped from the window and diverted to the late
+# side output instead, so "how much did we miss" stays measurable.
+ALLOWED_LATENESS_MS = int(os.environ.get("ALLOWED_LATENESS_SECONDS", "30")) * 1000
+
+# Events carry event_time, so a partition that momentarily has no traffic must
+# not hold the watermark back for everyone else.
+SOURCE_IDLE_TIMEOUT_S = int(os.environ.get("SOURCE_IDLE_TIMEOUT_SECONDS", "10"))
+
+CHECKPOINT_INTERVAL_MS = int(os.environ.get("CHECKPOINT_INTERVAL_SECONDS", "30")) * 1000
+
+# Side channel for events that arrive after their window has already been
+# emitted and closed.
+LATE_EVENTS_TAG = OutputTag("late-events", Types.STRING())
 
 
 # Load sensor metadata for enrichment
@@ -138,6 +151,10 @@ class AlertingFunction(KeyedProcessFunction):
                         "sensor_id": sensor_id,
                         "sensor_type": sensor_type,
                         "location": event.get("location", "unknown"),
+                        # Carried over from the enrichment step so the alert is
+                        # readable without a second lookup in the catalogue.
+                        "group": event.get("group", "Unknown"),
+                        "description": event.get("description", ""),
                         "value": val,
                         "threshold": warning_thresh,
                         "timestamp": event.get("event_time", ""),
@@ -174,12 +191,18 @@ class WindowAggregateFunction(ProcessWindowFunction):
         values = []
         sensor_type = "unknown"
         location = "unknown"
+        group = "Unknown"
+        description = ""
 
         for elem in elements:
             event = json.loads(elem)
             values.append(event.get("value", 0))
             sensor_type = event.get("sensor_type", sensor_type)
             location = event.get("location", location)
+            # Added by enrich_event upstream; kept on the aggregate so the
+            # enrichment survives into the serving layer and the lake.
+            group = event.get("group", group)
+            description = event.get("description", description)
 
         if not values:
             return
@@ -201,6 +224,8 @@ class WindowAggregateFunction(ProcessWindowFunction):
             "sensor_id": key,
             "sensor_type": sensor_type,
             "location": location,
+            "group": group,
+            "description": description,
             "avg_value": round(sum(values) / len(values), 2),
             "min_value": round(min(values), 2),
             "max_value": round(max(values), 2),
@@ -210,15 +235,36 @@ class WindowAggregateFunction(ProcessWindowFunction):
         yield json.dumps(aggregate)
 
 
+def build_kafka_sink(topic: str) -> KafkaSink:
+    """A JSON-string Kafka sink for one of the job's result topics."""
+    return (
+        KafkaSink.builder()
+        .set_bootstrap_servers(KAFKA_BOOTSTRAP)
+        .set_record_serializer(
+            KafkaRecordSerializationSchema.builder()
+            .set_topic(topic)
+            .set_value_serialization_schema(SimpleStringSchema())
+            .build()
+        )
+        .build()
+    )
+
+
 def main():
     logger.info("Starting IoT Sensor Monitoring Flink Job")
     logger.info(f"Kafka: {KAFKA_BOOTSTRAP}")
     logger.info(f"Input topic: {INPUT_TOPIC}")
-    logger.info(f"Output topics: {AGGREGATES_TOPIC}, {ALERTS_TOPIC}")
+    logger.info(f"Output topics: {AGGREGATES_TOPIC}, {ALERTS_TOPIC}, {LATE_TOPIC}")
 
     # Set up execution environment
     env = StreamExecutionEnvironment.get_execution_environment()
     env.set_parallelism(2)
+
+    # Without checkpoints the alerting state (breach counters) and the Kafka
+    # offsets are lost whenever a TaskManager restarts, and the source resumes
+    # at the latest offset -- so a restart would silently drop events and reset
+    # every counter mid-breach.
+    env.enable_checkpointing(CHECKPOINT_INTERVAL_MS)
 
     # Add Kafka connector JAR
     env.add_jars("file:///opt/flink/lib/flink-sql-connector-kafka-3.1.0-1.18.jar")
@@ -234,10 +280,16 @@ def main():
         .build()
     )
 
-    # Watermark strategy with 15 seconds allowed lateness
-    watermark_strategy = WatermarkStrategy.for_bounded_out_of_orderness(
-        Duration.of_seconds(15)
-    ).with_timestamp_assigner(EventTimestampAssigner())
+    # Event-time watermarks tolerating 15s of out-of-orderness. The idleness
+    # timeout matters as soon as parallelism exceeds the partition count: a
+    # source subtask without partitions never emits a watermark, and because
+    # the downstream watermark is the minimum across all subtasks, the windows
+    # would never fire at all.
+    watermark_strategy = (
+        WatermarkStrategy.for_bounded_out_of_orderness(Duration.of_seconds(15))
+        .with_timestamp_assigner(EventTimestampAssigner())
+        .with_idleness(Duration.of_seconds(SOURCE_IDLE_TIMEOUT_S))
+    )
 
     # Create stream from Kafka source
     events_stream = env.from_source(source, watermark_strategy, "Kafka Sensor Events")
@@ -250,9 +302,17 @@ def main():
         lambda x: json.loads(x).get("sensor_id", "unknown")
     )
 
-    aggregates_stream = keyed_stream.window(
-        TumblingEventTimeWindows.of(Time.minutes(1))
-    ).process(WindowAggregateFunction(), output_type=Types.STRING())
+    # Windows stay open for ALLOWED_LATENESS_MS past the watermark so moderately
+    # late events still update their window; anything later is diverted to the
+    # side output rather than silently discarded.
+    aggregates_stream = (
+        keyed_stream.window(TumblingEventTimeWindows.of(Time.minutes(1)))
+        .allowed_lateness(ALLOWED_LATENESS_MS)
+        .side_output_late_data(LATE_EVENTS_TAG)
+        .process(WindowAggregateFunction(), output_type=Types.STRING())
+    )
+
+    late_stream = aggregates_stream.get_side_output(LATE_EVENTS_TAG)
 
     # Branch 2: Stateful alerting
     alerts_stream = enriched_stream.key_by(
@@ -260,32 +320,9 @@ def main():
     ).process(AlertingFunction(), output_type=Types.STRING())
 
     # Kafka sinks
-    aggregates_sink = (
-        KafkaSink.builder()
-        .set_bootstrap_servers(KAFKA_BOOTSTRAP)
-        .set_record_serializer(
-            KafkaRecordSerializationSchema.builder()
-            .set_topic(AGGREGATES_TOPIC)
-            .set_value_serialization_schema(SimpleStringSchema())
-            .build()
-        )
-        .build()
-    )
-
-    alerts_sink = (
-        KafkaSink.builder()
-        .set_bootstrap_servers(KAFKA_BOOTSTRAP)
-        .set_record_serializer(
-            KafkaRecordSerializationSchema.builder()
-            .set_topic(ALERTS_TOPIC)
-            .set_value_serialization_schema(SimpleStringSchema())
-            .build()
-        )
-        .build()
-    )
-
-    aggregates_stream.sink_to(aggregates_sink)
-    alerts_stream.sink_to(alerts_sink)
+    aggregates_stream.sink_to(build_kafka_sink(AGGREGATES_TOPIC))
+    alerts_stream.sink_to(build_kafka_sink(ALERTS_TOPIC))
+    late_stream.sink_to(build_kafka_sink(LATE_TOPIC))
 
     env.execute("IoT Sensor Monitoring Pipeline")
 

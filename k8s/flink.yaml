@@ -1,14 +1,28 @@
+# Job configuration injected as environment variables. Kept separate from the
+# flink-conf ConfigMap below: `envFrom` turns every key into an env var name,
+# and a key like "flink-conf.yaml" is not a valid one, so kubelet would skip it
+# and emit an InvalidVariableNames warning.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: flink-config
+  name: flink-env
   namespace: iot-monitoring
 data:
   KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
   KAFKA_EVENTS_TOPIC: "sensor-events"
   KAFKA_AGGREGATES_TOPIC: "sensor-aggregates"
   KAFKA_ALERTS_TOPIC: "sensor-alerts"
+  KAFKA_LATE_TOPIC: "sensor-late-events"
   METADATA_PATH: "/opt/flink/job/metadata.json"
+  ALLOWED_LATENESS_SECONDS: "30"
+  CHECKPOINT_INTERVAL_SECONDS: "30"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flink-conf
+  namespace: iot-monitoring
+data:
   flink-conf.yaml: |
     jobmanager.rpc.address: flink-jobmanager
     jobmanager.rpc.port: 6123
@@ -19,6 +33,11 @@ data:
     rest.port: 8081
     rest.bind-address: ::
     env.java.opts: -Djava.net.preferIPv6Addresses=true
+    # Checkpointing is enabled in job.py. No `state.checkpoints.dir` is set, so
+    # Flink keeps checkpoints in the JobManager's memory: enough to recover the
+    # alerting state and Kafka offsets when a TaskManager dies or the job
+    # restarts, but not across a JobManager restart.
+    state.backend: hashmap
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -48,7 +67,7 @@ spec:
               name: webui
           envFrom:
             - configMapRef:
-                name: flink-config
+                name: flink-env
           resources:
             requests:
               memory: "512Mi"
@@ -56,6 +75,12 @@ spec:
             limits:
               memory: "1Gi"
               cpu: "1000m"
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 5
           volumeMounts:
             - name: flink-config-volume
               mountPath: /opt/flink/conf/flink-conf.yaml
@@ -63,7 +88,7 @@ spec:
       volumes:
         - name: flink-config-volume
           configMap:
-            name: flink-config
+            name: flink-conf
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -88,7 +113,7 @@ spec:
           args: ["taskmanager"]
           envFrom:
             - configMapRef:
-                name: flink-config
+                name: flink-env
           resources:
             requests:
               memory: "512Mi"
@@ -103,7 +128,7 @@ spec:
       volumes:
         - name: flink-config-volume
           configMap:
-            name: flink-config
+            name: flink-conf
 ---
 apiVersion: v1
 kind: Service
@@ -121,3 +146,58 @@ spec:
   selector:
     app: flink
     component: jobmanager
+---
+# Submits the PyFlink job, so `kubectl apply` alone brings up a *processing*
+# pipeline rather than an idle Flink cluster waiting for a manual `flink run`.
+# Delete and re-apply this Job to resubmit after a job.py change:
+#   kubectl -n iot-monitoring delete job flink-job-submit
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: flink-job-submit
+  namespace: iot-monitoring
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: job-submit
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: submit
+          image: iot-monitoring/flink-job:latest
+          envFrom:
+            - configMapRef:
+                name: flink-env
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              JM=flink-jobmanager:8081
+
+              # The Job may start before the JobManager serves REST. `flink
+              # list` doubles as the readiness check, so this needs no extra
+              # tooling in the image.
+              until flink list -m "$JM" > /dev/null 2>&1; do
+                echo "waiting for JobManager at $JM ..."
+                sleep 5
+              done
+
+              if flink list -m "$JM" -r 2>/dev/null | grep -q "IoT Sensor Monitoring Pipeline"; then
+                echo "Job already running, nothing to submit."
+                exit 0
+              fi
+
+              # -d detaches: a streaming job never returns, and without it this
+              # pod would run forever and the Job would never complete.
+              exec flink run -d -m "$JM" -py /opt/flink/job/job.py
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"

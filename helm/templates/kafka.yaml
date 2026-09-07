@@ -9,6 +9,7 @@ data:
   KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
   KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
   KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+  KAFKA_NUM_PARTITIONS: {{ .Values.kafka.numPartitions | quote }}
   KAFKA_OPTS: "-Djava.net.preferIPv6Addresses=true"
 ---
 apiVersion: apps/v1
