@@ -189,7 +189,16 @@ spec:
 
               # `helm upgrade` re-runs this hook; without the guard every
               # upgrade would submit a second copy of the same pipeline.
-              if flink list -m "$JM" -r 2>/dev/null | grep -q "{{ .Values.flink.jobName }}"; then
+              #
+              # Match on the state in parentheses, not just the name: `flink
+              # list -r` files CANCELLING and FAILING jobs under "Running/
+              # Restarting" too, so a plain name match would treat a job that
+              # is on its way out as healthy and skip the submission -- leaving
+              # the cluster with no pipeline at all. RESTARTING does count as
+              # present: that is the same job recovering, and submitting
+              # alongside it would produce a duplicate.
+              if flink list -m "$JM" -r 2>/dev/null \
+                   | grep -qE "{{ .Values.flink.jobName }} \((RUNNING|RESTARTING)\)"; then
                 echo "Job '{{ .Values.flink.jobName }}' already running, nothing to submit."
                 exit 0
               fi

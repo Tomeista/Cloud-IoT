@@ -190,7 +190,13 @@ spec:
                 sleep 5
               done
 
-              if flink list -m "$JM" -r 2>/dev/null | grep -q "IoT Sensor Monitoring Pipeline"; then
+              # Match on the state in parentheses, not just the name: `flink
+              # list -r` files CANCELLING and FAILING jobs under "Running/
+              # Restarting" too, so a plain name match would treat a job on its
+              # way out as healthy and skip the submission, leaving the cluster
+              # with no pipeline at all.
+              if flink list -m "$JM" -r 2>/dev/null \
+                   | grep -qE "IoT Sensor Monitoring Pipeline \((RUNNING|RESTARTING)\)"; then
                 echo "Job already running, nothing to submit."
                 exit 0
               fi
