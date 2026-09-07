@@ -9,6 +9,10 @@ data:
   KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092"
   KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
   KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+  # Topics are auto-created; the broker default of 1 partition would cap the
+  # whole pipeline at one consumer per group, making extra Flink TaskManagers
+  # and backend replicas pure overhead.
+  KAFKA_NUM_PARTITIONS: "3"
   KAFKA_OPTS: "-Djava.net.preferIPv6Addresses=true"
 ---
 apiVersion: apps/v1
