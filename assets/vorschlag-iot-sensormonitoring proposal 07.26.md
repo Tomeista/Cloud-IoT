@@ -1,4 +1,5 @@
 # IoT-Sensormonitoring auf Kubernetes – umsetzbarer Projektvorschlag
+# stand Juli 26
 
 ## Zielbild
 
