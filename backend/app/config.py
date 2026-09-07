@@ -6,6 +6,7 @@ class Settings(BaseSettings):
     kafka_events_topic: str = "sensor-events"
     kafka_aggregates_topic: str = "sensor-aggregates"
     kafka_alerts_topic: str = "sensor-alerts"
+    kafka_late_topic: str = "sensor-late-events"
 
     s3_endpoint: str = "http://seaweedfs:8333"
     s3_access_key: str = "seaweedadmin"
