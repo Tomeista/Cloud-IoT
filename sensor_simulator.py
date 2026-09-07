@@ -167,14 +167,23 @@ def output_file(events: list[SensorEvent], filepath: str):
             f.write(json.dumps(asdict(event), ensure_ascii=False) + "\n")
 
 
-def output_kafka(events: list[SensorEvent], bootstrap_servers: str, topic: str):
+def build_kafka_producer(bootstrap_servers: str):
+    """Create the single long-lived producer used for the whole run.
+
+    A producer owns a background I/O thread and broker connections, so it has
+    to outlive the individual send: building one per tick leaks a thread and a
+    set of sockets every interval until the process is killed.
+    """
     from kafka import KafkaProducer
 
-    producer = KafkaProducer(
+    return KafkaProducer(
         bootstrap_servers=bootstrap_servers,
         value_serializer=lambda v: json.dumps(v, ensure_ascii=False).encode("utf-8"),
         key_serializer=lambda k: k.encode("utf-8") if k else None,
     )
+
+
+def output_kafka(events: list[SensorEvent], producer, topic: str):
     for event in events:
         producer.send(topic, key=event.sensor_id, value=asdict(event))
     producer.flush()
@@ -206,6 +215,10 @@ def run_simulator(args):
             file=sys.stderr,
         )
 
+    producer = (
+        build_kafka_producer(args.kafka_bootstrap) if args.output == "kafka" else None
+    )
+
     total_events = 0
     try:
         while True:
@@ -217,7 +230,7 @@ def run_simulator(args):
             elif args.output == "file":
                 output_file(events, args.file)
             elif args.output == "kafka":
-                output_kafka(events, args.kafka_bootstrap, args.kafka_topic)
+                output_kafka(events, producer, args.kafka_topic)
 
             if args.max_events > 0 and total_events >= args.max_events:
                 print(
@@ -230,6 +243,9 @@ def run_simulator(args):
 
     except KeyboardInterrupt:
         print(f"\nStopped. Total events generated: {total_events}", file=sys.stderr)
+    finally:
+        if producer is not None:
+            producer.close()
 
 
 def main():
