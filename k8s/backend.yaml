@@ -8,6 +8,7 @@ data:
   APP_KAFKA_EVENTS_TOPIC: "sensor-events"
   APP_KAFKA_AGGREGATES_TOPIC: "sensor-aggregates"
   APP_KAFKA_ALERTS_TOPIC: "sensor-alerts"
+  APP_KAFKA_LATE_TOPIC: "sensor-late-events"
   APP_S3_ENDPOINT: "http://seaweedfs:8333"
   APP_S3_BUCKET: "iot-lakehouse"
 ---
