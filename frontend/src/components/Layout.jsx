@@ -19,6 +19,12 @@ import SensorsIcon from '@mui/icons-material/Sensors';
 import ShowChartIcon from '@mui/icons-material/ShowChart';
 import { useLiveData } from '../LiveDataContext';
 
+const STATUS_LABEL = {
+  loading: 'Verbinde …',
+  online: 'Live-Daten',
+  offline: 'Backend nicht erreichbar',
+};
+
 const DRAWER_WIDTH = 240;
 
 const navItems = [
@@ -30,7 +36,7 @@ function Layout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { connected } = useLiveData();
+  const { status } = useLiveData();
 
   const drawer = (
     <Box>
@@ -99,8 +105,8 @@ function Layout() {
           </Typography>
           <Chip
             icon={<SensorsIcon />}
-            label={connected ? 'Live-Daten' : 'Demo-Daten'}
-            color={connected ? 'success' : 'default'}
+            label={STATUS_LABEL[status]}
+            color={status === 'online' ? 'success' : status === 'offline' ? 'error' : 'default'}
             size="small"
             variant="outlined"
           />
