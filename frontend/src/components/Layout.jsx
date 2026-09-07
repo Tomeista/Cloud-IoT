@@ -12,6 +12,7 @@ import {
   Toolbar,
   Typography,
   Chip,
+  Divider,
 } from '@mui/material';
 import MenuIcon from '@mui/icons-material/Menu';
 import DashboardIcon from '@mui/icons-material/Dashboard';
@@ -40,17 +41,32 @@ function Layout() {
 
   const drawer = (
     <Box>
-      <Toolbar sx={{ gap: 1 }}>
+      <Box
+        sx={{
+          px: 2,
+          py: 3,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 1.5,
+        }}
+      >
         <Box
           component="img"
-          src="/icon.png"
-          alt="IoT Monitor logo"
-          sx={{ width: 28, height: 28, borderRadius: 1 }}
+          // icon_no_text.png is the mark alone (521x615). The full icon.png is
+          // a 2816x1536 banner including the wordmark -- forcing that into a
+          // small square is what turned the logo into an unreadable smudge.
+          src="/icon_no_text.png"
+          alt="SenseIQ logo"
+          // Height-driven with automatic width, so the mark keeps its own
+          // proportions instead of being stretched to a square.
+          sx={{ height: 104, width: 'auto', display: 'block' }}
         />
-        <Typography variant="h6" noWrap sx={{ fontSize: '1rem' }}>
-          IoT Monitor
+        <Typography variant="h6" noWrap sx={{ fontSize: '1.05rem', fontWeight: 600 }}>
+          SenseIQ
         </Typography>
-      </Toolbar>
+      </Box>
+      <Divider sx={{ mx: 2, mb: 1 }} />
       <List sx={{ px: 1 }}>
         {navItems.map((item) => (
           <ListItemButton
@@ -101,7 +117,7 @@ function Layout() {
             <MenuIcon />
           </IconButton>
           <Typography variant="h6" color="text.primary" sx={{ flexGrow: 1 }}>
-            {navItems.find((i) => i.path === location.pathname)?.label || 'IoT Sensor Monitoring'}
+            {navItems.find((i) => i.path === location.pathname)?.label || 'SenseIQ'}
           </Typography>
           <Chip
             icon={<SensorsIcon />}
