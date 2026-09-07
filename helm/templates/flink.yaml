@@ -27,6 +27,12 @@ data:
   flink-conf.yaml: |
     jobmanager.rpc.address: flink-jobmanager
     jobmanager.rpc.port: 6123
+    # Pin the BLOB server instead of letting it take a random port. TaskManagers
+    # fetch the job's artefacts from the JobManager through the Service, and a
+    # Service only forwards ports it declares -- on a random port the fetch
+    # fails, the tasks never leave CREATED and the job sits in RUNNING
+    # processing nothing.
+    blob.server.port: 6124
     jobmanager.memory.process.size: 1024m
     taskmanager.memory.process.size: 1024m
     taskmanager.numberOfTaskSlots: {{ .Values.flink.taskmanager.taskSlots }}
@@ -67,6 +73,8 @@ spec:
           ports:
             - containerPort: 6123
               name: rpc
+            - containerPort: 6124
+              name: blob
             - containerPort: 8081
               name: webui
           envFrom:
@@ -135,6 +143,9 @@ spec:
     - port: 6123
       targetPort: 6123
       name: rpc
+    - port: 6124
+      targetPort: 6124
+      name: blob
     - port: 8081
       targetPort: 8081
       name: webui
