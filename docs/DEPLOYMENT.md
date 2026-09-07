@@ -216,6 +216,17 @@ kubectl apply -f k8s/seaweedfs.yaml
 kubectl apply -f k8s/backend.yaml
 kubectl apply -f k8s/frontend.yaml
 kubectl apply -f k8s/flink.yaml
+kubectl apply -f k8s/simulator.yaml
+```
+
+Note that `k8s/*.yaml` hardcode the image prefix `iot-monitoring/`. Use the Helm
+path if your images live under a different registry.
+
+### Or in one step:
+
+```bash
+./deploy.sh              # builds the images, then deploys via Helm
+./deploy.sh --manifests  # same, but applies k8s/*.yaml
 ```
 
 ---
@@ -230,24 +241,36 @@ Wait until Kafka, Zookeeper, and SeaweedFS are Running before proceeding. This m
 
 ---
 
-## Step 8: Submit the Flink Job
+## Step 8: Verify the Flink Job
 
-Once the Flink JobManager is running:
-
-```bash
-# Port-forward to Flink REST API
-kubectl -n iot-monitoring port-forward svc/flink-jobmanager 8081:8081 &
-
-# Submit the PyFlink job
-kubectl -n iot-monitoring exec -it deploy/flink-jobmanager -- \
-  flink run -py /opt/flink/job/job.py
-```
-
-Verify the job is running:
+The job is submitted **automatically** by the `flink-job-submit` Job that ships
+with both the chart and the manifests — it waits for the JobManager, checks
+whether the pipeline is already running, and submits it detached. Nothing has to
+be started by hand.
 
 ```bash
-curl http://localhost:8081/jobs
+# Should reach Completed
+kubectl -n iot-monitoring get job flink-job-submit
+kubectl -n iot-monitoring logs job/flink-job-submit
+
+# List running jobs from inside the cluster
+kubectl -n iot-monitoring exec deploy/flink-jobmanager -- \
+  flink list -m flink-jobmanager:8081 -r
 ```
+
+To resubmit after changing `job.py` (rebuild and reimport the image first):
+
+```bash
+# Helm re-runs the hook on every upgrade
+helm upgrade iot-monitoring ./helm --namespace iot-monitoring
+
+# With raw manifests, delete the Job so it runs again
+kubectl -n iot-monitoring delete job flink-job-submit
+kubectl apply -f k8s/flink.yaml
+```
+
+The submit Job skips submission when a pipeline of the same name is already
+running, so cancel the old one in the Flink UI first if you want to replace it.
 
 ---
 
@@ -282,8 +305,9 @@ curl -X POST http://[$SERVER_IP]:30080/api/events \
     "location": "Hall-A1"
   }'
 
-# Start the simulator
-curl -X POST http://[$SERVER_IP]:30080/api/simulator/start
+# The simulator runs as its own Deployment and feeds Kafka continuously;
+# check that it is producing
+kubectl -n iot-monitoring logs deploy/simulator
 
 # Check aggregates (wait ~60s for first window)
 curl http://[$SERVER_IP]:30080/api/aggregates
@@ -366,8 +390,8 @@ kubectl -n iot-monitoring logs deploy/flink-taskmanager
 
 ### Verify archived objects
 
-The backend archives three datasets as JSON Lines objects into the
-`iot-lakehouse` bucket on SeaweedFS — the raw input and both result streams,
+The backend archives four datasets as JSON Lines objects into the
+`iot-lakehouse` bucket on SeaweedFS — the raw input and the result streams,
 each partitioned by event time:
 
 ```
@@ -375,7 +399,12 @@ iot-lakehouse/
   raw/dt=YYYY-MM-DD/hour=HH/*.jsonl          # every ingested sensor event
   aggregates/dt=YYYY-MM-DD/hour=HH/*.jsonl   # 1-minute windowed statistics
   alerts/dt=YYYY-MM-DD/hour=HH/*.jsonl       # sustained threshold breaches
+  late/dt=YYYY-MM-DD/hour=HH/*.jsonl         # events past the allowed lateness
 ```
+
+`late/` is normally empty: it only fills when an event arrives more than
+`ALLOWED_LATENESS_SECONDS` (default 30s) after its window closed. Its size is
+the honest measure of what the windowing dropped.
 
 To check that archiving works:
 
