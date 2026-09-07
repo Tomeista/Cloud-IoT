@@ -16,9 +16,7 @@ import SpeedIcon from '@mui/icons-material/Speed';
 import VibrationIcon from '@mui/icons-material/Vibration';
 import SensorsIcon from '@mui/icons-material/Sensors';
 import BoltIcon from '@mui/icons-material/Bolt';
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
-import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined';
-import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import StorageIcon from '@mui/icons-material/Storage';
 import { useLiveData } from '../LiveDataContext';
 
 const SENSOR_ICONS = {
@@ -28,11 +26,18 @@ const SENSOR_ICONS = {
   vibration: <VibrationIcon />,
 };
 
-const LOG_META = {
-  info: { color: 'info', icon: <InfoOutlinedIcon fontSize="small" /> },
-  warning: { color: 'warning', icon: <ReportProblemOutlinedIcon fontSize="small" /> },
-  error: { color: 'error', icon: <ErrorOutlineIcon fontSize="small" /> },
-};
+// The four prefixes the archiver writes under in the lake, in pipeline order:
+// the raw landing zone, the stream job's two result streams, and the events it
+// dropped for arriving too late. Listed statically so a dataset that has not
+// flushed an object yet still shows up as 0 rather than silently missing.
+const DATASETS = [
+  { key: 'raw', label: 'Rohdaten' },
+  { key: 'aggregates', label: 'Aggregate' },
+  { key: 'alerts', label: 'Alerts' },
+  { key: 'late', label: 'Verspätet' },
+];
+
+const fmtNum = (n) => (n ?? 0).toLocaleString('de-DE');
 
 const fmtTime = (value) => {
   try {
@@ -43,7 +48,8 @@ const fmtTime = (value) => {
 };
 
 function DashboardView() {
-  const { aggregates, alerts, logs, connected, lastUpdated } = useLiveData();
+  const { aggregates, alerts, archive, status, lastUpdated } = useLiveData();
+  const online = status === 'online';
 
   // KPIs derived from the live data (no hardcoded values).
   const activeSensors = new Set(aggregates.map((a) => a.sensor_id)).size;
@@ -56,26 +62,28 @@ function DashboardView() {
     .reduce((sum, a) => sum + (a.event_count || 0), 0);
   const criticalCount = alerts.filter((a) => a.severity === 'critical').length;
 
+  // Without a backend these counts are unknown, not zero -- showing "0 Alerts"
+  // while disconnected would assert something we cannot know.
   const stats = [
     {
       label: 'Active Alerts',
-      value: alerts.length,
-      sub: `${criticalCount} critical`,
-      color: alerts.length ? 'error.main' : 'success.main',
+      value: online ? alerts.length : '—',
+      sub: online ? `${criticalCount} critical` : 'keine Verbindung',
+      color: !online ? 'text.disabled' : alerts.length ? 'error.main' : 'success.main',
       icon: <WarningAmberIcon />,
     },
     {
       label: 'Active Sensors',
-      value: activeSensors,
-      sub: 'reporting',
-      color: 'primary.main',
+      value: online ? activeSensors : '—',
+      sub: online ? 'reporting' : 'keine Verbindung',
+      color: online ? 'primary.main' : 'text.disabled',
       icon: <SensorsIcon />,
     },
     {
       label: 'Events / min',
-      value: eventsPerMin,
-      sub: latestWindow ? `window ${latestWindow}` : '—',
-      color: 'success.main',
+      value: online ? eventsPerMin : '—',
+      sub: online ? (latestWindow ? `window ${latestWindow}` : '—') : 'keine Verbindung',
+      color: online ? 'success.main' : 'text.disabled',
       icon: <BoltIcon />,
     },
   ];
@@ -94,17 +102,19 @@ function DashboardView() {
             Dashboard
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-            Wichtigste Kennzahlen, aktive Alerts und System-Log.
+            Wichtigste Kennzahlen, aktive Alerts und Zustand des Data Lake.
           </Typography>
         </Box>
         <Chip
           size="small"
           variant="outlined"
-          color={connected ? 'success' : 'default'}
+          color={online ? 'success' : status === 'offline' ? 'error' : 'default'}
           label={
-            connected
+            online
               ? `Live · ${lastUpdated ? fmtTime(lastUpdated) : ''}`
-              : 'Demo-Daten (kein Backend)'
+              : status === 'offline'
+                ? 'Backend nicht erreichbar'
+                : 'Verbinde …'
           }
         />
       </Stack>
@@ -137,7 +147,7 @@ function DashboardView() {
 
       <Grid container spacing={3}>
         {/* Alerts */}
-        <Grid item xs={12} md={5}>
+        <Grid item xs={12} md={7}>
           <Card sx={{ height: '100%' }}>
             <CardContent>
               <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
@@ -149,7 +159,11 @@ function DashboardView() {
               <Stack spacing={1.5} sx={{ maxHeight: 440, overflow: 'auto', pr: 1 }}>
                 {alerts.length === 0 && (
                   <Typography variant="body2" color="text.secondary">
-                    Keine aktiven Alerts.
+                    {online
+                      ? 'Keine aktiven Alerts.'
+                      : status === 'offline'
+                        ? 'Backend nicht erreichbar — keine Daten.'
+                        : 'Lade …'}
                   </Typography>
                 )}
                 {alerts.map((alert) => (
@@ -192,46 +206,95 @@ function DashboardView() {
           </Card>
         </Grid>
 
-        {/* Live system log */}
-        <Grid item xs={12} md={7}>
+        {/* Data lake archive */}
+        <Grid item xs={12} md={5}>
           <Card sx={{ height: '100%' }}>
             <CardContent>
               <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
-                <Typography variant="h6">Live System Log</Typography>
+                <StorageIcon color="primary" />
+                <Typography variant="h6">Data Lake</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  (Sub-Alert-Ereignisse · geplant: /api/logs)
+                  (SeaweedFS · S3)
                 </Typography>
               </Stack>
               <Divider sx={{ mb: 2 }} />
-              <Stack divider={<Divider flexItem />} sx={{ maxHeight: 440, overflow: 'auto' }}>
-                {logs.map((log) => {
-                  const meta = LOG_META[log.level] || LOG_META.info;
-                  return (
-                    <Stack
-                      key={log.id}
-                      direction="row"
-                      spacing={1.5}
-                      alignItems="flex-start"
-                      sx={{ py: 1 }}
-                    >
-                      <Chip
-                        size="small"
-                        color={meta.color}
-                        variant="outlined"
-                        icon={meta.icon}
-                        label={log.level}
-                        sx={{ minWidth: 96 }}
-                      />
-                      <Box sx={{ flexGrow: 1 }}>
-                        <Typography variant="body2">{log.message}</Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {log.source} · {fmtTime(log.timestamp)}
-                        </Typography>
-                      </Box>
-                    </Stack>
-                  );
-                })}
-              </Stack>
+
+              {!archive ? (
+                <Typography variant="body2" color="text.secondary">
+                  {status === 'offline'
+                    ? 'Backend nicht erreichbar — keine Daten.'
+                    : 'Lade …'}
+                </Typography>
+              ) : (
+                <>
+                  <Stack direction="row" spacing={4} sx={{ mb: 2 }}>
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">
+                        Objekte
+                      </Typography>
+                      <Typography variant="h5">
+                        {fmtNum(archive.objects_written)}
+                      </Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="body2" color="text.secondary">
+                        Datensätze
+                      </Typography>
+                      <Typography variant="h5">
+                        {fmtNum(archive.events_archived)}
+                      </Typography>
+                    </Box>
+                  </Stack>
+
+                  <Stack divider={<Divider flexItem />}>
+                    {DATASETS.map(({ key, label }) => {
+                      const ds = archive.datasets?.[key];
+                      return (
+                        <Stack
+                          key={key}
+                          direction="row"
+                          justifyContent="space-between"
+                          alignItems="center"
+                          sx={{ py: 0.75 }}
+                        >
+                          <Typography variant="body2">{label}</Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {fmtNum(ds?.objects_written)} Objekte ·{' '}
+                            {fmtNum(ds?.records_archived)} Datensätze
+                          </Typography>
+                        </Stack>
+                      );
+                    })}
+                  </Stack>
+
+                  {archive.last_object_key && (
+                    <Box sx={{ mt: 2 }}>
+                      <Typography variant="caption" color="text.secondary">
+                        Zuletzt geschrieben
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        component="div"
+                        sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}
+                      >
+                        {archive.last_object_key}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {/* The archiver shares one consumer group across backend
+                      replicas, so each replica archives a slice of the stream
+                      and reports only its own counters. */}
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    component="div"
+                    sx={{ mt: 2 }}
+                  >
+                    Zähler gelten je Backend-Replica seit deren Start.
+                  </Typography>
+                </>
+              )}
             </CardContent>
           </Card>
         </Grid>
