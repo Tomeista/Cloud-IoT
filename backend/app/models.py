@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from pydantic import BaseModel, Field
@@ -6,7 +6,11 @@ from pydantic import BaseModel, Field
 
 class SensorEvent(BaseModel):
     sensor_id: str
-    event_time: datetime = Field(default_factory=lambda: datetime.utcnow())
+    # Timezone-aware: the Flink job derives watermarks from this field, and a
+    # naive timestamp would be read as local time there instead of UTC.
+    event_time: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc)
+    )
     sensor_type: str
     value: float
     unit: str
