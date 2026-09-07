@@ -1,24 +1,45 @@
+# Job configuration injected as environment variables. Kept separate from the
+# flink-conf ConfigMap below: `envFrom` turns every key into an env var name,
+# and a key like "flink-conf.yaml" is not a valid one, so kubelet would skip it
+# and emit an InvalidVariableNames warning.
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: flink-config
+  name: flink-env
   namespace: {{ .Values.namespace }}
 data:
   KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
   KAFKA_EVENTS_TOPIC: {{ .Values.kafka_topics.events | quote }}
   KAFKA_AGGREGATES_TOPIC: {{ .Values.kafka_topics.aggregates | quote }}
   KAFKA_ALERTS_TOPIC: {{ .Values.kafka_topics.alerts | quote }}
+  KAFKA_LATE_TOPIC: {{ .Values.kafka_topics.late | quote }}
   METADATA_PATH: "/opt/flink/job/metadata.json"
+  ALLOWED_LATENESS_SECONDS: {{ .Values.flink.allowedLatenessSeconds | quote }}
+  CHECKPOINT_INTERVAL_SECONDS: {{ .Values.flink.checkpointIntervalSeconds | quote }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: flink-conf
+  namespace: {{ .Values.namespace }}
+data:
   flink-conf.yaml: |
     jobmanager.rpc.address: flink-jobmanager
     jobmanager.rpc.port: 6123
     jobmanager.memory.process.size: 1024m
     taskmanager.memory.process.size: 1024m
     taskmanager.numberOfTaskSlots: {{ .Values.flink.taskmanager.taskSlots }}
-    parallelism.default: 2
+    parallelism.default: {{ .Values.flink.parallelism }}
     rest.port: 8081
     rest.bind-address: ::
     env.java.opts: -Djava.net.preferIPv6Addresses=true
+    # Checkpointing is enabled in job.py. No `state.checkpoints.dir` is set, so
+    # Flink keeps checkpoints in the JobManager's memory: enough to recover the
+    # alerting state and Kafka offsets when a TaskManager dies or the job
+    # restarts, but not across a JobManager restart. A durable directory would
+    # need RWX storage, which k3s's default local-path provisioner does not
+    # offer -- see "Grenzen des Prototyps".
+    state.backend: hashmap
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -49,9 +70,15 @@ spec:
               name: webui
           envFrom:
             - configMapRef:
-                name: flink-config
+                name: flink-env
           resources:
             {{- toYaml .Values.flink.jobmanager.resources | nindent 12 }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8081
+            initialDelaySeconds: 10
+            periodSeconds: 5
           volumeMounts:
             - name: flink-config-volume
               mountPath: /opt/flink/conf/flink-conf.yaml
@@ -59,7 +86,7 @@ spec:
       volumes:
         - name: flink-config-volume
           configMap:
-            name: flink-config
+            name: flink-conf
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -85,7 +112,7 @@ spec:
           args: ["taskmanager"]
           envFrom:
             - configMapRef:
-                name: flink-config
+                name: flink-env
           resources:
             {{- toYaml .Values.flink.taskmanager.resources | nindent 12 }}
           volumeMounts:
@@ -95,7 +122,7 @@ spec:
       volumes:
         - name: flink-config-volume
           configMap:
-            name: flink-config
+            name: flink-conf
 ---
 apiVersion: v1
 kind: Service
@@ -113,3 +140,66 @@ spec:
   selector:
     app: flink
     component: jobmanager
+---
+# Submits the PyFlink job to the cluster, so that `helm install` alone brings up
+# a *processing* pipeline rather than an idle Flink cluster waiting for someone
+# to run `flink run` by hand.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: flink-job-submit
+  namespace: {{ .Values.namespace }}
+  annotations:
+    # A Job's pod template is immutable, so re-running `helm upgrade` would fail
+    # on the existing object. Recreating it as a hook keeps upgrades working.
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 10
+  template:
+    metadata:
+      labels:
+        app: flink
+        component: job-submit
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: submit
+          image: "{{ .Values.imageRegistry }}/{{ .Values.flink.image }}:{{ .Values.flink.tag }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: flink-env
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -euo pipefail
+              JM=flink-jobmanager:8081
+
+              # The Job may start before the JobManager serves REST. `flink
+              # list` doubles as the readiness check, so this needs no extra
+              # tooling in the image.
+              until flink list -m "$JM" > /dev/null 2>&1; do
+                echo "waiting for JobManager at $JM ..."
+                sleep 5
+              done
+
+              # `helm upgrade` re-runs this hook; without the guard every
+              # upgrade would submit a second copy of the same pipeline.
+              if flink list -m "$JM" -r 2>/dev/null | grep -q "{{ .Values.flink.jobName }}"; then
+                echo "Job '{{ .Values.flink.jobName }}' already running, nothing to submit."
+                exit 0
+              fi
+
+              # -d detaches: a streaming job never returns, and without it this
+              # pod would run forever and the Job would never complete.
+              exec flink run -d -m "$JM" -py /opt/flink/job/job.py
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"

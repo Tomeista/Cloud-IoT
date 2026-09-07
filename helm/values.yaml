@@ -61,6 +61,11 @@ kafka:
   image: confluentinc/cp-kafka
   tag: "7.6.1"
   storage: 5Gi
+  # Topics are auto-created; the broker default of 1 partition would cap the
+  # whole pipeline at one consumer per group, making extra Flink TaskManagers
+  # and backend replicas pure overhead. Three partitions give scaling something
+  # to work with.
+  numPartitions: 3
   resources:
     requests:
       memory: "512Mi"
@@ -85,6 +90,14 @@ zookeeper:
 
 # Apache Flink
 flink:
+  # Must match env.execute(...) in flink-job/job.py: the submit Job uses this
+  # name to detect an already-running pipeline and skip re-submitting.
+  jobName: "IoT Sensor Monitoring Pipeline"
+  parallelism: 2
+  # Windows accept stragglers for this long past the watermark; later events go
+  # to the late-events topic instead of being dropped silently.
+  allowedLatenessSeconds: 30
+  checkpointIntervalSeconds: 30
   jobmanager:
     replicas: 1
     resources:
@@ -131,3 +144,5 @@ kafka_topics:
   events: sensor-events
   aggregates: sensor-aggregates
   alerts: sensor-alerts
+  # Events that missed their window even after the allowed lateness.
+  late: sensor-late-events
