@@ -16,6 +16,7 @@ data:
   METADATA_PATH: "/opt/flink/job/metadata.json"
   ALLOWED_LATENESS_SECONDS: {{ .Values.flink.allowedLatenessSeconds | quote }}
   CHECKPOINT_INTERVAL_SECONDS: {{ .Values.flink.checkpointIntervalSeconds | quote }}
+  FLINK_PARALLELISM: {{ .Values.flink.parallelism | quote }}
 ---
 apiVersion: v1
 kind: ConfigMap

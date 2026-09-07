@@ -55,6 +55,12 @@ SOURCE_IDLE_TIMEOUT_S = int(os.environ.get("SOURCE_IDLE_TIMEOUT_SECONDS", "10"))
 
 CHECKPOINT_INTERVAL_MS = int(os.environ.get("CHECKPOINT_INTERVAL_SECONDS", "30")) * 1000
 
+# A parallelism set on the environment overrides `parallelism.default` from
+# flink-conf.yaml, so hardcoding it here would silently ignore the Helm value.
+# Raising it past the input topic's partition count adds idle subtasks rather
+# than throughput -- see kafka.numPartitions.
+PARALLELISM = int(os.environ.get("FLINK_PARALLELISM", "2"))
+
 # Side channel for events that arrive after their window has already been
 # emitted and closed.
 LATE_EVENTS_TAG = OutputTag("late-events", Types.STRING())
@@ -258,7 +264,7 @@ def main():
 
     # Set up execution environment
     env = StreamExecutionEnvironment.get_execution_environment()
-    env.set_parallelism(2)
+    env.set_parallelism(PARALLELISM)
 
     # Without checkpoints the alerting state (breach counters) and the Kafka
     # offsets are lost whenever a TaskManager restarts, and the source resumes

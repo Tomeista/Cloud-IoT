@@ -16,6 +16,7 @@ data:
   METADATA_PATH: "/opt/flink/job/metadata.json"
   ALLOWED_LATENESS_SECONDS: "30"
   CHECKPOINT_INTERVAL_SECONDS: "30"
+  FLINK_PARALLELISM: "2"
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -59,6 +60,7 @@ spec:
       containers:
         - name: jobmanager
           image: iot-monitoring/flink-job:latest
+          imagePullPolicy: IfNotPresent
           args: ["jobmanager"]
           ports:
             - containerPort: 6123
@@ -110,6 +112,7 @@ spec:
       containers:
         - name: taskmanager
           image: iot-monitoring/flink-job:latest
+          imagePullPolicy: IfNotPresent
           args: ["taskmanager"]
           envFrom:
             - configMapRef:
@@ -168,6 +171,7 @@ spec:
       containers:
         - name: submit
           image: iot-monitoring/flink-job:latest
+          imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:
                 name: flink-env

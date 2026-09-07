@@ -29,7 +29,7 @@ import {
   Legend,
 } from 'recharts';
 import { useLiveData } from '../LiveDataContext';
-import { SENSOR_GROUPS, SENSOR_TYPES } from '../mockData';
+import { SENSOR_TYPES } from '../sensorTypes';
 
 const LINE_COLORS = [
   '#1976d2', '#d32f2f', '#2e7d32', '#ed6c02',
@@ -47,15 +47,25 @@ const windowKey = (row) => row.window_start_ts || row.window_start;
 const byWindowAsc = (a, b) => windowKey(a).localeCompare(windowKey(b));
 
 function SensorsView() {
-  const { aggregates } = useLiveData();
+  const { aggregates, status } = useLiveData();
+  // Distinguishes "the pipeline produced nothing for this selection" from
+  // "we never got an answer", so an empty chart is never ambiguous.
+  const emptyMessage =
+    status === 'offline'
+      ? 'Backend nicht erreichbar — keine Daten.'
+      : status === 'loading'
+        ? 'Lade …'
+        : 'Keine Daten für diese Auswahl.';
   const [dimension, setDimension] = useState('type');
   const [selection, setSelection] = useState(null);
 
   // Available options for the searchable dropdown, based on the dimension.
+  // All three come out of the aggregates themselves: `group` rides along on
+  // every record because the Flink job enriches events from the sensor
+  // catalogue, so the view needs no grouping table of its own to drift from it.
   const options = useMemo(() => {
-    if (dimension === 'group') return SENSOR_GROUPS.map((g) => g.name);
-    if (dimension === 'type') return [...new Set(aggregates.map((a) => a.sensor_type))].sort();
-    return [...new Set(aggregates.map((a) => a.sensor_id))].sort();
+    const field = { group: 'group', type: 'sensor_type', sensor: 'sensor_id' }[dimension];
+    return [...new Set(aggregates.map((a) => a[field]).filter(Boolean))].sort();
   }, [dimension, aggregates]);
 
   // Fall back to the first option when nothing valid is selected.
@@ -65,13 +75,8 @@ function SensorsView() {
   // Aggregate rows matching the current selection.
   const rows = useMemo(() => {
     if (!current) return [];
-    if (dimension === 'group') {
-      const grp = SENSOR_GROUPS.find((g) => g.name === current);
-      const set = new Set(grp ? grp.sensors : []);
-      return aggregates.filter((a) => set.has(a.sensor_id));
-    }
-    if (dimension === 'type') return aggregates.filter((a) => a.sensor_type === current);
-    return aggregates.filter((a) => a.sensor_id === current);
+    const field = { group: 'group', type: 'sensor_type', sensor: 'sensor_id' }[dimension];
+    return aggregates.filter((a) => a[field] === current);
   }, [aggregates, dimension, current]);
 
   // Build chart series: one avg line per sensor for group/type, or
@@ -168,7 +173,7 @@ function SensorsView() {
           <Divider sx={{ mb: 2 }} />
           {chartData.length === 0 ? (
             <Typography variant="body2" color="text.secondary">
-              Keine Daten für diese Auswahl.
+              {emptyMessage}
             </Typography>
           ) : (
             <ResponsiveContainer width="100%" height={340}>
@@ -244,7 +249,7 @@ function SensorsView() {
                   <TableRow>
                     <TableCell colSpan={8}>
                       <Typography variant="body2" color="text.secondary">
-                        Keine Daten.
+                        {emptyMessage}
                       </Typography>
                     </TableCell>
                   </TableRow>
