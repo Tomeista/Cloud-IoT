@@ -60,6 +60,7 @@ spec:
       containers:
         - name: jobmanager
           image: iot-monitoring/flink-job:latest
+          imagePullPolicy: IfNotPresent
           args: ["jobmanager"]
           ports:
             - containerPort: 6123
@@ -111,6 +112,7 @@ spec:
       containers:
         - name: taskmanager
           image: iot-monitoring/flink-job:latest
+          imagePullPolicy: IfNotPresent
           args: ["taskmanager"]
           envFrom:
             - configMapRef:
@@ -169,6 +171,7 @@ spec:
       containers:
         - name: submit
           image: iot-monitoring/flink-job:latest
+          imagePullPolicy: IfNotPresent
           envFrom:
             - configMapRef:
                 name: flink-env

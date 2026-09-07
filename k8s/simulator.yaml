@@ -17,6 +17,7 @@ spec:
         - name: simulator
           # Reuse the backend image; sensor_simulator.py ships inside it.
           image: iot-monitoring/backend:latest
+          imagePullPolicy: IfNotPresent
           command:
             - python
             - /app/sensor_simulator.py
