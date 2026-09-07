@@ -55,6 +55,9 @@ export function generateMockAggregates(windows = 8) {
       rows.push({
         window_start: label,
         window_end: label,
+        // Same shape the pipeline emits: the short label is for the axis, the
+        // full timestamp is what the views order by.
+        window_start_ts: t.toISOString(),
         sensor_id: s.sensor_id,
         sensor_type: s.sensor_type,
         location: s.location,
