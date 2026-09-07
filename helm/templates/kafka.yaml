@@ -81,6 +81,13 @@ spec:
       labels:
         app: kafka
     spec:
+      # A Service named "kafka" makes kubelet inject the legacy Docker-link
+      # variable KAFKA_PORT=tcp://<clusterIP>:9092 into this pod. The Confluent
+      # entrypoint treats KAFKA_PORT as the deprecated `port` setting and exits
+      # 1 before the broker ever starts, which is invisible in the logs beyond
+      # a "port is deprecated" line. Turning the links off keeps the broker's
+      # own KAFKA_* configuration authoritative.
+      enableServiceLinks: false
       containers:
         - name: kafka
           image: "{{ .Values.kafka.image }}:{{ .Values.kafka.tag }}"
