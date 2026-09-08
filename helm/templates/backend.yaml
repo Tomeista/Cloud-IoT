@@ -38,6 +38,12 @@ spec:
                 name: backend-config
             - secretRef:
                 name: seaweedfs-credentials
+          env:
+            # Serving only. The archiver runs in its own single-replica
+            # Deployment because a Delta table takes one writer; see
+            # helm/templates/archiver.yaml.
+            - name: APP_ARCHIVER_ENABLED
+              value: "false"
           resources: {{- toYaml .Values.backend.resources | nindent 12 }}
           readinessProbe:
             httpGet:

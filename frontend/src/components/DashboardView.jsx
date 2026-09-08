@@ -26,10 +26,10 @@ const SENSOR_ICONS = {
   vibration: <VibrationIcon />,
 };
 
-// The four prefixes the archiver writes under in the lake, in pipeline order:
+// The four Delta tables the archiver writes, in pipeline order:
 // the raw landing zone, the stream job's two result streams, and the events it
-// dropped for arriving too late. Listed statically so a dataset that has not
-// flushed an object yet still shows up as 0 rather than silently missing.
+// dropped for arriving too late. Listed statically so a table that has not
+// been committed to yet still shows up as 0 rather than silently missing.
 const DATASETS = [
   { key: 'raw', label: 'Rohdaten' },
   { key: 'aggregates', label: 'Aggregate' },
@@ -212,9 +212,9 @@ function DashboardView() {
             <CardContent>
               <Stack direction="row" alignItems="center" spacing={1} sx={{ mb: 1 }}>
                 <StorageIcon color="primary" />
-                <Typography variant="h6">Data Lake</Typography>
+                <Typography variant="h6">Lakehouse</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  (SeaweedFS · S3)
+                  (Delta Lake · SeaweedFS S3)
                 </Typography>
               </Stack>
               <Divider sx={{ mb: 2 }} />
@@ -230,7 +230,7 @@ function DashboardView() {
                   <Stack direction="row" spacing={4} sx={{ mb: 2 }}>
                     <Box>
                       <Typography variant="body2" color="text.secondary">
-                        Objekte
+                        Commits
                       </Typography>
                       <Typography variant="h5">
                         {fmtNum(archive.objects_written)}
@@ -259,8 +259,8 @@ function DashboardView() {
                         >
                           <Typography variant="body2">{label}</Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {fmtNum(ds?.objects_written)} Objekte ·{' '}
                             {fmtNum(ds?.records_archived)} Datensätze
+                            {ds?.version != null && ` · v${ds.version}`}
                           </Typography>
                         </Stack>
                       );
@@ -282,16 +282,16 @@ function DashboardView() {
                     </Box>
                   )}
 
-                  {/* The archiver shares one consumer group across backend
-                      replicas, so each replica archives a slice of the stream
-                      and reports only its own counters. */}
+                  {/* The archiver is a single Deployment -- a Delta table
+                      takes exactly one writer -- so these counters cover the
+                      whole stream rather than one replica's slice. */}
                   <Typography
                     variant="caption"
                     color="text.secondary"
                     component="div"
                     sx={{ mt: 2 }}
                   >
-                    Zähler gelten je Backend-Replica seit deren Start.
+                    Zähler seit dem Start des Archivers. v = Delta-Version.
                   </Typography>
                 </>
               )}

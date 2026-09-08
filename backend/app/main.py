@@ -2,7 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from .archiver import archive_stats, start_archiver_thread
@@ -22,7 +22,10 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     start_consumer_thread()
-    start_archiver_thread()
+    if settings.archiver_enabled:
+        start_archiver_thread()
+    else:
+        logger.info("Archiver disabled on this replica (serving only)")
     logger.info("Backend started")
     yield
     logger.info("Backend shutdown")
@@ -81,3 +84,46 @@ def get_alerts(limit: int = 50):
 @app.get("/api/archive/status")
 def archive_status():
     return archive_stats
+
+
+@app.get("/api/history")
+def history(
+    dataset: str,
+    dt: str | None = None,
+    sensor_id: str | None = None,
+    limit: int = 100,
+):
+    """Query one Delta table directly, over its full history.
+
+    The other read endpoints answer from the serving layer's in-memory window
+    and therefore only know the recent past; this one reads the lakehouse.
+
+    Served only by the archiver pod: reading Delta needs pyarrow, which the
+    serving replicas deliberately do not load (see `delta_writer`). nginx
+    routes this path to the archiver Service.
+    """
+    if not settings.archiver_enabled:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "This replica serves the stream only. /api/history is answered "
+                "by the archiver; reach it through the frontend proxy."
+            ),
+        )
+
+    # Imported lazily for the same reason the archiver imports its writer late.
+    from .delta_reader import TableMissing, datasets, query
+
+    if dataset not in datasets():
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown dataset {dataset!r}; expected one of {datasets()}",
+        )
+
+    try:
+        return query(dataset, dt=dt, sensor_id=sensor_id, limit=limit)
+    except TableMissing:
+        raise HTTPException(
+            status_code=404,
+            detail=f"dataset {dataset!r} has no committed data yet",
+        ) from None

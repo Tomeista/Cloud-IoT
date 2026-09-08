@@ -62,6 +62,7 @@ if [ "${1:-}" == "--manifests" ]; then
     kubectl apply -f k8s/kafka.yaml
     kubectl apply -f k8s/seaweedfs.yaml
     kubectl apply -f k8s/backend.yaml
+    kubectl apply -f k8s/archiver.yaml
     kubectl apply -f k8s/frontend.yaml
     kubectl apply -f k8s/flink.yaml
     kubectl apply -f k8s/simulator.yaml
@@ -84,6 +85,7 @@ echo "--- Waiting for applications ---"
 kubectl -n "$NAMESPACE" rollout status deployment/flink-jobmanager --timeout=180s
 kubectl -n "$NAMESPACE" rollout status deployment/flink-taskmanager --timeout=180s
 kubectl -n "$NAMESPACE" rollout status deployment/backend --timeout=120s
+kubectl -n "$NAMESPACE" rollout status deployment/archiver --timeout=120s
 kubectl -n "$NAMESPACE" rollout status deployment/frontend --timeout=120s
 
 # The submit Job waits for the JobManager itself and exits once the pipeline is

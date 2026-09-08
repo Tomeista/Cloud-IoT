@@ -1,0 +1,82 @@
+# The archiver is split out of the backend Deployment because a Delta table
+# takes exactly one writer.
+#
+# SeaweedFS accepts a conditional put without enforcing it, so delta-rs cannot
+# detect a competing commit: two writers both claim log version N and the
+# second silently overwrites the first. Measured against SeaweedFS 3.80, four
+# concurrent writers lost 95 of 200 rows without raising a single error.
+#
+# Hence replicas: 1 -- and strategy: Recreate, because the default
+# RollingUpdate briefly runs the old and the new pod at once, which is exactly
+# the two-writer case this Deployment exists to prevent.
+#
+# The serving replicas keep scaling independently; they run the same image with
+# APP_ARCHIVER_ENABLED=false (see k8s/backend.yaml).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: archiver
+  namespace: iot-monitoring
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: archiver
+  template:
+    metadata:
+      labels:
+        app: archiver
+    spec:
+      containers:
+        - name: archiver
+          image: iot-monitoring/backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            - secretRef:
+                name: seaweedfs-credentials
+          env:
+            - name: APP_ARCHIVER_ENABLED
+              value: "true"
+          resources:
+            # Larger than the serving pods: this is the only workload that
+            # imports pyarrow and delta-rs, which build the Parquet batches in
+            # memory before committing them.
+            requests:
+              memory: "512Mi"
+              cpu: "200m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+---
+# Only the dashboard's archive panel talks to this Service: nginx routes
+# /api/archive/ here and everything else to the backend, because the archive
+# counters now live in this pod rather than in the serving replicas.
+apiVersion: v1
+kind: Service
+metadata:
+  name: archiver
+  namespace: iot-monitoring
+spec:
+  ports:
+    - port: 8000
+      targetPort: 8000
+  selector:
+    app: archiver
