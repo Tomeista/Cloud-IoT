@@ -27,6 +27,12 @@ data:
   flink-conf.yaml: |
     jobmanager.rpc.address: flink-jobmanager
     jobmanager.rpc.port: 6123
+    # Pin the BLOB server instead of letting it take a random port. TaskManagers
+    # fetch the job's artefacts from the JobManager through the Service, and a
+    # Service only forwards ports it declares -- on a random port the fetch
+    # fails, the tasks never leave CREATED and the job sits in RUNNING
+    # processing nothing.
+    blob.server.port: 6124
     jobmanager.memory.process.size: 1024m
     taskmanager.memory.process.size: 1024m
     taskmanager.numberOfTaskSlots: 2
@@ -65,6 +71,8 @@ spec:
           ports:
             - containerPort: 6123
               name: rpc
+            - containerPort: 6124
+              name: blob
             - containerPort: 8081
               name: webui
           envFrom:
@@ -143,6 +151,9 @@ spec:
     - port: 6123
       targetPort: 6123
       name: rpc
+    - port: 6124
+      targetPort: 6124
+      name: blob
     - port: 8081
       targetPort: 8081
       name: webui
@@ -190,7 +201,13 @@ spec:
                 sleep 5
               done
 
-              if flink list -m "$JM" -r 2>/dev/null | grep -q "IoT Sensor Monitoring Pipeline"; then
+              # Match on the state in parentheses, not just the name: `flink
+              # list -r` files CANCELLING and FAILING jobs under "Running/
+              # Restarting" too, so a plain name match would treat a job on its
+              # way out as healthy and skip the submission, leaving the cluster
+              # with no pipeline at all.
+              if flink list -m "$JM" -r 2>/dev/null \
+                   | grep -qE "IoT Sensor Monitoring Pipeline \((RUNNING|RESTARTING)\)"; then
                 echo "Job already running, nothing to submit."
                 exit 0
               fi
