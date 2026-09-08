@@ -20,8 +20,10 @@ _MAX_BUFFERED_EVENTS = 10_000
 
 # Stats exposed via GET /api/archive/status
 archive_stats = {
+    "commits_written": 0,
     "objects_written": 0,
     "events_archived": 0,
+    "records_rejected": 0,
     "last_object_key": None,
     "datasets": {},
 }
@@ -38,11 +40,11 @@ _TIME_FIELD = {
 
 
 def _dataset_topics() -> dict[str, str]:
-    """Kafka topic -> dataset prefix in the lake.
+    """Kafka topic -> Delta table in the lakehouse.
 
     `raw` is the immutable landing zone (every event as ingested); `aggregates`
     and `alerts` are the stream job's results. Archiving all of them means the
-    lake holds both the input and the output of the pipeline, so results
+    lakehouse holds both the input and the output of the pipeline, so results
     survive a restart instead of living only in the serving layer's memory.
     `late` holds events the stream job dropped for arriving past their window's
     allowed lateness -- keeping them makes the loss auditable rather than
@@ -57,13 +59,15 @@ def _dataset_topics() -> dict[str, str]:
 
 
 def _s3_client():
-    # SeaweedFS requires path-style addressing (no virtual-host DNS)
+    # SeaweedFS requires path-style addressing (no virtual-host DNS).
+    # Delta writes go through delta-rs; this client is still needed to create
+    # the bucket and to park records the schema rejected.
     return boto3.client(
         "s3",
         endpoint_url=settings.s3_endpoint,
         aws_access_key_id=settings.s3_access_key,
         aws_secret_access_key=settings.s3_secret_key,
-        region_name="us-east-1",
+        region_name=settings.s3_region,
         config=Config(
             s3={"addressing_style": "path"},
             connect_timeout=5,
@@ -91,53 +95,110 @@ def _partition_time(dataset: str, record: dict) -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _flush(s3, dataset: str, buffer: list[dict]) -> None:
-    """Write the buffer as JSON Lines, one object per hourly partition.
+def _quarantine(s3, dataset: str, records: list[dict]) -> None:
+    """Park schema-rejected records as JSONL beside the tables.
 
-    Hive-style `dt=`/`hour=` partitions are what query engines (Spark, DuckDB,
-    Trino) expect for partition pruning, so a later batch query can read a
-    single day without scanning the bucket.
+    Same reasoning as the `late` dataset: a record the pipeline could not take
+    is written down rather than dropped, so the loss is auditable. JSONL is the
+    right format here precisely because it needs no schema -- these are the
+    records that did not have one.
     """
-    partitions: dict[str, list[dict]] = {}
+    now = datetime.now(timezone.utc)
+    key = (
+        f"_rejected/{dataset}/dt={now:%Y-%m-%d}/hour={now:%H}/"
+        f"{int(now.timestamp() * 1000)}-{uuid.uuid4().hex[:8]}.jsonl"
+    )
+    body = "\n".join(json.dumps(record, default=str) for record in records) + "\n"
+    s3.put_object(
+        Bucket=settings.s3_bucket,
+        Key=key,
+        Body=body.encode("utf-8"),
+        ContentType="application/x-ndjson",
+    )
+    archive_stats["records_rejected"] += len(records)
+    logger.error(
+        "Quarantined %d rejected %s records to s3://%s/%s",
+        len(records),
+        dataset,
+        settings.s3_bucket,
+        key,
+    )
+
+
+def _flush(s3, dataset: str, buffer: list[dict]) -> None:
+    """Append the buffer to the dataset's Delta table as a single commit.
+
+    Unlike the JSONL path this does not group records by partition by hand:
+    `dt` and `hour` are attached as columns and delta-rs lays the files out
+    under `dt=`/`hour=` itself, recording in the transaction log which files
+    belong to the table.
+    """
+    # Imported here rather than at module scope: the serving replicas import
+    # this module only for archive_stats, and pyarrow costs ~100 MB of RSS that
+    # a pod which never archives should not pay for.
+    from . import delta_writer
+
+    rows = []
     for record in buffer:
         ts = _partition_time(dataset, record)
-        partitions.setdefault(f"dt={ts:%Y-%m-%d}/hour={ts:%H}", []).append(record)
+        rows.append({**record, "dt": f"{ts:%Y-%m-%d}", "hour": f"{ts:%H}"})
 
-    for partition, records in partitions.items():
-        now = datetime.now(timezone.utc)
-        key = (
-            f"{dataset}/{partition}/"
-            f"{int(now.timestamp() * 1000)}-{uuid.uuid4().hex[:8]}.jsonl"
-        )
-        body = "\n".join(json.dumps(record, default=str) for record in records) + "\n"
-        s3.put_object(
-            Bucket=settings.s3_bucket,
-            Key=key,
-            Body=body.encode("utf-8"),
-            ContentType="application/x-ndjson",
-        )
+    table, rejected = delta_writer.build_table(dataset, rows)
+
+    if table is not None:
+        delta_writer.append(dataset, table)
+
+        version = delta_writer.current_version(dataset)
+        location = delta_writer.table_uri(dataset)
+        last_key = location if version is None else f"{location} @ v{version}"
 
         stats = archive_stats["datasets"].setdefault(
             dataset,
-            {"objects_written": 0, "records_archived": 0, "last_object_key": None},
+            {
+                "commits_written": 0,
+                "objects_written": 0,
+                "records_archived": 0,
+                "records_rejected": 0,
+                "version": None,
+                "last_object_key": None,
+            },
         )
+        stats["commits_written"] += 1
+        # One commit writes at least one Parquet object; the dashboard's object
+        # counter keeps its meaning at commit granularity.
         stats["objects_written"] += 1
-        stats["records_archived"] += len(records)
-        stats["last_object_key"] = key
+        stats["records_archived"] += table.num_rows
+        stats["version"] = version
+        stats["last_object_key"] = last_key
+        archive_stats["commits_written"] += 1
         archive_stats["objects_written"] += 1
-        archive_stats["events_archived"] += len(records)
-        archive_stats["last_object_key"] = key
+        archive_stats["events_archived"] += table.num_rows
+        archive_stats["last_object_key"] = last_key
         logger.info(
-            "Archived %d %s records to s3://%s/%s",
-            len(records),
+            "Committed %d %s records to %s (version %s)",
+            table.num_rows,
             dataset,
-            settings.s3_bucket,
-            key,
+            location,
+            version,
         )
+
+    if rejected:
+        _quarantine(s3, dataset, rejected)
+        archive_stats["datasets"].setdefault(dataset, {}).setdefault(
+            "records_rejected", 0
+        )
+        archive_stats["datasets"][dataset]["records_rejected"] += len(rejected)
 
 
 def _archive_loop():
-    """Background thread: archive raw events and pipeline results to S3."""
+    """Background thread: archive raw events and pipeline results to the lakehouse.
+
+    Runs in exactly one pod. A Delta table tolerates only one writer here:
+    SeaweedFS accepts a conditional put without enforcing it, so two writers
+    would both claim the same log version and one would silently overwrite the
+    other. The archiver therefore has its own Deployment at replicas: 1 with
+    strategy: Recreate, while the serving replicas run with the archiver off.
+    """
     topics = _dataset_topics()
     buffers: dict[str, list[dict]] = {dataset: [] for dataset in topics.values()}
     last_flush = time.monotonic()
@@ -191,13 +252,27 @@ def _archive_loop():
                         )
                         s3 = None
                         del buffers[dataset][:-_MAX_BUFFERED_EVENTS]
+                    except Exception as e:  # noqa: BLE001
+                        # delta-rs raises its own exception types, and importing
+                        # them here would pull pyarrow into the serving pods.
+                        # Records that do not fit the schema never reach this
+                        # point -- build_table quarantines them -- so what lands
+                        # here is a failed commit: keep the batch and retry.
+                        logger.warning(
+                            "Delta commit failed for %s (%s), keeping %d records "
+                            "buffered",
+                            dataset,
+                            e,
+                            len(buffers[dataset]),
+                        )
+                        del buffers[dataset][:-_MAX_BUFFERED_EVENTS]
 
                 # Acknowledge the consumed records only once every buffer has
                 # reached S3. Auto-commit would advance the offsets while
                 # records were still held in memory, so a pod restart would
                 # drop them without a trace. Committing late instead means a
-                # crash mid-flush replays a batch: duplicates in the lake, but
-                # no silent loss.
+                # crash mid-flush replays a batch: duplicates in the lakehouse,
+                # but no silent loss.
                 if due and not any(buffers.values()):
                     consumer.commit()
         except NoBrokersAvailable:
@@ -211,4 +286,4 @@ def _archive_loop():
 def start_archiver_thread():
     thread = threading.Thread(target=_archive_loop, daemon=True)
     thread.start()
-    logger.info("Started background S3 archiver thread")
+    logger.info("Started background Delta archiver thread")

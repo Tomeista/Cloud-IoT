@@ -39,6 +39,22 @@ backend:
       memory: "256Mi"
       cpu: "500m"
 
+# Archiver - consumes all four topics and commits them to the Delta tables.
+# Runs as its own Deployment at a single replica: a Delta table takes exactly
+# one writer, and SeaweedFS cannot enforce that on its own (see
+# helm/templates/archiver.yaml). The replica count is therefore fixed in the
+# template rather than configurable here. Reuses the backend image.
+archiver:
+  resources:
+    # Roomier than the serving pods: this is the only workload that imports
+    # pyarrow and delta-rs to build Parquet batches in memory.
+    requests:
+      memory: "512Mi"
+      cpu: "200m"
+    limits:
+      memory: "1Gi"
+      cpu: "1000m"
+
 # Sensor data simulator - continuous producer that feeds Kafka.
 # Reuses the backend image (sensor_simulator.py is baked in at /app).
 # The fleet comes from the sensor catalogue shipped at /app/metadata.json --

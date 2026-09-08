@@ -12,8 +12,14 @@ class Settings(BaseSettings):
     s3_access_key: str = "seaweedadmin"
     s3_secret_key: str = "seaweedadmin"
     s3_bucket: str = "iot-lakehouse"
+    s3_region: str = "us-east-1"
     s3_archive_max_batch: int = 500
     s3_archive_flush_seconds: int = 60
+
+    # A Delta table takes exactly one writer, so the archiver runs in its own
+    # single-replica Deployment and the serving replicas start with this off.
+    # Both use the same image; only this flag differs.
+    archiver_enabled: bool = True
 
     class Config:
         env_prefix = "APP_"
