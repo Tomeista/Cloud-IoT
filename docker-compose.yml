@@ -62,6 +62,31 @@ services:
       APP_S3_ACCESS_KEY: seaweedadmin
       APP_S3_SECRET_KEY: seaweedadmin
       APP_S3_BUCKET: iot-lakehouse
+      # Serving only -- the archiver runs as its own service below.
+      APP_ARCHIVER_ENABLED: "false"
+    depends_on:
+      - kafka
+      - seaweedfs
+
+  # Same image as the backend, but this is the one process that writes to the
+  # Delta tables. It is a separate service because a Delta table takes exactly
+  # one writer and SeaweedFS cannot enforce that itself: two writers both claim
+  # the same log version and one silently overwrites the other.
+  archiver:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      APP_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      APP_KAFKA_EVENTS_TOPIC: sensor-events
+      APP_KAFKA_AGGREGATES_TOPIC: sensor-aggregates
+      APP_KAFKA_ALERTS_TOPIC: sensor-alerts
+      APP_KAFKA_LATE_TOPIC: sensor-late-events
+      APP_S3_ENDPOINT: http://seaweedfs:8333
+      APP_S3_ACCESS_KEY: seaweedadmin
+      APP_S3_SECRET_KEY: seaweedadmin
+      APP_S3_BUCKET: iot-lakehouse
+      APP_ARCHIVER_ENABLED: "true"
     depends_on:
       - kafka
       - seaweedfs
@@ -72,6 +97,8 @@ services:
       - "3000:80"
     depends_on:
       - backend
+      # nginx resolves the archive endpoints to this service at request time.
+      - archiver
 
   # --- Stream Processing ---
 
