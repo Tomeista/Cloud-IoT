@@ -102,7 +102,7 @@ function DashboardView() {
             Dashboard
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
-            Wichtigste Kennzahlen, aktive Alerts und Zustand des Data Lake.
+            Wichtigste Kennzahlen, aktive Alerts und Zustand des Lakehouse.
           </Typography>
         </Box>
         <Chip
