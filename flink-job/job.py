@@ -18,7 +18,7 @@ from pyflink.common import Types, WatermarkStrategy
 from pyflink.common.serialization import SimpleStringSchema
 from pyflink.common.time import Duration, Time
 from pyflink.common.watermark_strategy import TimestampAssigner
-from pyflink.datastream import StreamExecutionEnvironment, OutputTag
+from pyflink.datastream import OutputTag, StreamExecutionEnvironment
 from pyflink.datastream.connectors.kafka import (
     KafkaOffsetsInitializer,
     KafkaRecordSerializationSchema,
