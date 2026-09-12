@@ -27,6 +27,7 @@
 12. [Grenzen des Prototyps und Ausblick](#12-grenzen-des-prototyps-und-ausblick)
 
 Ergänzend: [Eigenständigkeit und Innovation](#eigenständigkeit-und-innovation) ·
+[Entwicklung](#entwicklung) ·
 [Team und Eigenanteil](#team-und-eigenanteil) ·
 [Repository-Struktur](#repository-struktur)
 
@@ -1634,6 +1635,48 @@ oben genannten Bereichen zuzuordnen.
 
 ---
 
+## Entwicklung
+
+Für die inhaltliche Beschreibung des Systems ist die restliche README
+zuständig; dieser Abschnitt beschreibt nur den Arbeitsablauf im Repo:
+lokale Prüfung, Linter, Namenskonventionen für Branches und Commits.
+Ausführlicher steht das in [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+**Lokale Prüfung.** Auf `main` sind Tests und Linter grün; das soll auf
+jedem Zweig so bleiben.
+
+```bash
+# Python: Tests und Lint
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest
+ruff check .
+
+# Frontend: Lint und Build
+cd frontend
+npm install
+npm run lint
+npm run build
+```
+
+Die Unit-Tests decken bislang den Katalog-Loader des Simulators und die
+Partitionierungslogik des Archivers ab; Details in
+[`tests/README.md`](tests/README.md). Die Ruleset-Auswahl des Linters ist
+bewusst schmal — nur Regeln, deren Funde in aller Regel echte Fehler sind,
+keine Stilpräferenzen.
+
+**Branches** folgen dem Muster `<kind>/<slug>`, `<kind>` genauso wie das
+Commit-Präfix — `feat/`, `fix/`, `docs/`, `test/`, `chore/`, `style/`.
+Kein Direkt-Push auf `main`.
+
+**Commit-Nachrichten** folgen
+[Conventional Commits](https://www.conventionalcommits.org/): erste Zeile
+`<type>(<scope>): <Betreff>`, danach ein Fließtext, der das *Warum*
+erklärt (das *Was* zeigt der Diff). Deutsch und Englisch sind beide in
+Ordnung — passend zur bearbeiteten Datei.
+
+---
+
 ## Repository-Struktur
 
 | Pfad                                         | Inhalt                                                                                                                               | Stufe der Pipeline |
@@ -1647,6 +1690,8 @@ oben genannten Bereichen zuzuordnen.
 | [`terraform/`](terraform/)                   | OpenStack-VMs und k3s-Bootstrap in einem `apply`                                                                                     | Infrastruktur      |
 | [`seaweedfs/`](seaweedfs/)                   | S3-Identitäten des Objektspeichers                                                                                                   | Storage            |
 | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md)   | Ausführliche Deployment-Anleitung inklusive Fehlersuche                                                                              | Betrieb            |
+| [`tests/`](tests/)                           | Pytest-Suite ([`README`](tests/README.md)) — deckt Katalog-Loader und Partitionierung ab                                             | Entwicklung        |
+| [`CONTRIBUTING.md`](CONTRIBUTING.md)         | Kurz-Anleitung für Mitwirkende — Prüfschritte, Branch- und Commit-Konventionen                                                       | Entwicklung        |
 | [`assets/screenshots/`](assets/screenshots/) | Eingebettete Nachweise aus [Abschnitt 11](#11-screenshots-und-nachweise)                                                             | Abgabe             |
 | [`docker-compose.yml`](docker-compose.yml)   | Lokales Entwicklungssetup der gesamten Kette                                                                                         | Entwicklung        |
 | [`deploy.sh`](deploy.sh)                     | Baut die Images und rollt den Stack aus (Helm oder Rohmanifeste)                                                                     | Betrieb            |
