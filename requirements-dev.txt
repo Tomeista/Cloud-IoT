@@ -1,0 +1,8 @@
+pytest>=8.0
+
+# Runtime deps of backend/app that tests import transitively. Kept in this file
+# rather than in backend/requirements.txt because the test suite stubs kafka
+# and never needs boto3's network path -- pinning the exact versions the
+# backend uses just avoids an accidental drift.
+pydantic-settings==2.3.4
+boto3==1.34.131
