@@ -1575,23 +1575,38 @@ endet und der Produktivbetrieb begänne.
 
 ## Eigenständigkeit und Innovation
 
-Die Abweichungen vom in der Vorlesung gezeigten Standardweg sind an ihrer
-jeweiligen Stelle begründet. Diese Tabelle bündelt sie, damit sie nicht
-einzeln gesucht werden müssen.
+Die Prüfungsleistung sieht Bonuspunkte für nachvollziehbar begründete
+Eigenständigkeit vor und nennt als Beispiele ausdrücklich einen Objektspeicher
+anstelle von HDFS, ein alternatives Tabellenformat sowie Funktionalität über den
+geforderten Mindestumfang hinaus. Dieser Abschnitt bündelt genau das: Die
+Entscheidungen sind an ihrer jeweiligen Stelle ausführlich begründet, die
+Tabelle fasst sie zusammen, damit sie nicht einzeln gesucht werden müssen.
 
-| Abweichung / Zusatz                                   | Statt / gegenüber                      | Begründung                                                                                                                                        | Nachzulesen                                             |
-| ----------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| **SeaweedFS** als Objektspeicher                      | HDFS (NameNode + DataNodes) oder MinIO | Ein Prozess und 256 Mi statt eines Verbunds — und ohne Festlegung: Der Wechsel zu MinIO oder AWS S3 sind drei Konfigurationswerte, kein Codepfad | [4](#begründete-abweichungen)                           |
-| **Delta Lake** als Tabellenformat                     | Iceberg (dem eigenen Vorschlag)        | delta-rs hält das Transaktionslog im Bucket — kein Katalogdienst, kein zusätzlicher Pod, kein PVC, keine JVM                                      | [6](#format-parquet-mit-delta-als-tabellenformat)       |
-| **Migration Data Lake → Lakehouse** im Projektverlauf | Verbleib bei JSON Lines                | Atomare Commits, definierte Lesestände, Spaltenformat, erzwungenes Schema und Time Travel — fünf konkrete Defizite des Vorgängers                 | [6](#vom-data-lake-zum-lakehouse--warum-migriert-wurde) |
-| **Archiver als eigener Dienst**                       | S3-Sink im Flink-Job                   | Kafka bleibt die einzige Integrationsgrenze; erlaubt das Mitschreiben der Rohdaten ohne Eingriff in den Verarbeitungsgraphen                      | [4](#begründete-abweichungen)                           |
-| **Vier Datasets statt eines**, inkl. `raw` und `late` | nur Ergebnisse archivieren             | `raw` macht Kappa-Reprocessing überhaupt erst möglich, `late` macht Datenverlust auditierbar statt unsichtbar                                     | [6](#vier-datasets-vier-delta-tabellen)                 |
-| **Partitionierung nach Ereigniszeit**                 | Partitionierung nach Ankunftszeit      | Ein verspätetes oder erneut eingespieltes Event landet in der Partition, in die es fachlich gehört — nur so ist eine Partition jemals vollständig | [6](#layout-und-partitionierung)                        |
-| **Quarantäne für abgewiesene Records**                | Batch scheitern lassen                 | Verhindert die Endlosschleife aus fehlgeschlagenem Flush und nicht committetem Offset; der Verlust bleibt nachlesbar                              | [6](#umgang-mit-abgewiesenen-records)                   |
-| **Gegensätzliche Consumer-Group-Strategien**          | eine Strategie für beide Consumer      | Serving braucht jede Partition in jeder Replica, Archivierung genau eine Zustellung — dasselbe Image, zwei bewusst verschiedene Gruppenmodelle    | [8](#durchsatz-horizontal-skalierbar)                   |
-| **Declarative Job-Einreichung** als Kubernetes-`Job`  | manuelles `flink run`                  | `helm install` bringt eine _verarbeitende_ Pipeline hoch, nicht einen leeren Flink-Cluster; der Job erkennt eine bereits laufende Pipeline        | [8](#workloads)                                         |
-| **Terraform-Bootstrap in einem `apply`**              | manuelle Cluster-Einrichtung           | VMs, k3s, Image-Build, Helm-Rollout und die IPv6-NodePort-Brücke reproduzierbar aus einer Quelle                                                  | [9](#weg-a--terraform-empfohlen-ein-befehl)             |
-| **Ein-Schreiber-Garantie über das Deployment**        | `AWS_S3_ALLOW_UNSAFE_RENAME`           | Die Notluke von delta-rs würde den Konflikt verbergen statt lösen; die Korrektheit wird stattdessen im Deployment hergestellt und belegt          | [8](#durchsatz-horizontal-skalierbar)                   |
+**Zur Lesart der mittleren Spalte.** Sie nennt jeweils die etablierte
+Alternative — durchweg ein solider und für den allgemeinen Fall richtiger Weg,
+und in den meisten Zeilen derjenige, den man in einem Produktivsystem auch
+erwarten würde. Dass hier anders entschieden wurde, ist deshalb kein Einwand
+gegen diese Alternative, sondern folgt aus den Randbedingungen dieses Projekts:
+drei kleine VMs, die sich Broker, Stream-Engine, Objektspeicher und Anwendung
+teilen, ein Prototyp ohne Betriebsmannschaft, und ein Schwerpunkt, der bewusst
+auf der Streaming-Verarbeitung liegt. Fielen diese Randbedingungen weg — größeres
+Cluster, echter Produktivbetrieb —, wäre in mehreren Zeilen die Alternative die
+bessere Wahl. Wo das zutrifft, ist es an der jeweiligen Stelle benannt und in
+[Abschnitt 12](#12-grenzen-des-prototyps-und-ausblick) zusammengefasst.
+
+| Entscheidung                                          | Etablierte Alternative                  | Ausschlaggebend unter den Randbedingungen dieses Projekts                                                                                                                                                   | Nachzulesen                                             |
+| ----------------------------------------------------- | --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| **SeaweedFS** als Objektspeicher                      | HDFS (NameNode + DataNodes) oder MinIO  | Auf drei geteilten VMs bleiben so die Ressourcen bei der Verarbeitung: ein Prozess, 256 Mi. Die Wahl legt zudem nichts fest — der Wechsel zu MinIO oder AWS S3 sind drei Konfigurationswerte, kein Codepfad | [4](#begründete-abweichungen)                           |
+| **Delta Lake** als Tabellenformat                     | Iceberg (dem eigenen Vorschlag)         | delta-rs hält das Transaktionslog im Bucket — kein Katalogdienst, kein zusätzlicher Pod, kein PVC, keine JVM                                                                                                | [6](#format-parquet-mit-delta-als-tabellenformat)       |
+| **Migration Data Lake → Lakehouse** im Projektverlauf | Verbleib bei JSON Lines                 | Atomare Commits, definierte Lesestände, Spaltenformat, erzwungenes Schema und Time Travel — fünf Eigenschaften, die die eigene erste Fassung nicht bot                                                      | [6](#vom-data-lake-zum-lakehouse--warum-migriert-wurde) |
+| **Archiver als eigener Dienst**                       | S3-Sink im Flink-Job                    | Kafka bleibt die einzige Integrationsgrenze; erlaubt das Mitschreiben der Rohdaten ohne Eingriff in den Verarbeitungsgraphen                                                                                | [4](#begründete-abweichungen)                           |
+| **Vier Datasets statt eines**, inkl. `raw` und `late` | nur Ergebnisse archivieren              | `raw` macht Kappa-Reprocessing überhaupt erst möglich, `late` macht Datenverlust auditierbar statt unsichtbar                                                                                               | [6](#vier-datasets-vier-delta-tabellen)                 |
+| **Partitionierung nach Ereigniszeit**                 | Partitionierung nach Ankunftszeit       | Ein verspätetes oder erneut eingespieltes Event landet in der Partition, in die es fachlich gehört — nur so ist eine Partition jemals vollständig                                                           | [6](#layout-und-partitionierung)                        |
+| **Quarantäne für abgewiesene Records**                | Batch scheitern lassen                  | Verhindert die Endlosschleife aus fehlgeschlagenem Flush und nicht committetem Offset; der Verlust bleibt nachlesbar                                                                                        | [6](#umgang-mit-abgewiesenen-records)                   |
+| **Gegensätzliche Consumer-Group-Strategien**          | eine Strategie für beide Consumer       | Serving braucht jede Partition in jeder Replica, Archivierung genau eine Zustellung — dasselbe Image, zwei bewusst verschiedene Gruppenmodelle                                                              | [8](#durchsatz-horizontal-skalierbar)                   |
+| **Declarative Job-Einreichung** als Kubernetes-`Job`  | `flink run` nach dem Rollout            | Ein `helm install` bringt damit eine _verarbeitende_ Pipeline hoch statt eines leeren Flink-Clusters; der Job erkennt eine bereits laufende Pipeline und bleibt dadurch wiederholbar                        | [8](#workloads)                                         |
+| **Terraform-Bootstrap in einem `apply`**              | Cluster schrittweise von Hand aufsetzen | VMs, k3s, Image-Build, Helm-Rollout und die IPv6-NodePort-Brücke reproduzierbar aus einer Quelle                                                                                                            | [9](#weg-a--terraform-empfohlen-ein-befehl)             |
+| **Ein-Schreiber-Garantie über das Deployment**        | `AWS_S3_ALLOW_UNSAFE_RENAME`            | Die Notluke von delta-rs würde den Konflikt verbergen statt lösen; die Korrektheit wird stattdessen im Deployment hergestellt und belegt                                                                    | [8](#durchsatz-horizontal-skalierbar)                   |
 
 Der Punkt, an dem der Prototyp am deutlichsten über den Mindestumfang
 hinausgeht, ist die **Behandlung dessen, was schiefgeht**: zu späte Events, vom
