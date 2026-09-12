@@ -395,3 +395,8 @@ clouds.yml
 *-openrc.sh
 
 .claude/
+
+# Editor swap files
+*.kate-swp
+*.swp
+*~
