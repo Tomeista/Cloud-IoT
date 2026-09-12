@@ -9,14 +9,8 @@ down.
 """
 
 import json
-import sys
-from pathlib import Path
 
-# Make the repo root importable so `import sensor_simulator` works when pytest
-# is run from anywhere in the tree.
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
-import sensor_simulator  # noqa: E402
+import sensor_simulator
 
 
 def test_missing_file_returns_empty_dict(tmp_path):
