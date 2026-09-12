@@ -1,4 +1,5 @@
 pytest>=8.0
+ruff>=0.6
 
 # Runtime deps of backend/app that tests import transitively. Kept in this file
 # rather than in backend/requirements.txt because the test suite stubs kafka

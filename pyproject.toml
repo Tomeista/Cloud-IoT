@@ -1,0 +1,21 @@
+# Repo-level tool configuration. Kept minimal: no build system, no packaging
+# metadata -- the components ship as Docker images and each has its own
+# requirements.txt, so pyproject.toml exists only to house shared dev tooling.
+
+[tool.ruff]
+line-length = 88
+# Exclude paths ruff would otherwise crawl. .venv is where local development
+# environments live (see requirements-dev.txt); adding it here means a
+# freshly-installed venv does not turn `ruff check .` red with warnings from
+# third-party packages.
+extend-exclude = [".venv", "venv"]
+
+[tool.ruff.lint]
+# Conservative rule set: only "obvious problems" rulesets. Every rule enabled
+# here flags something ~always worth acting on -- no stylistic preferences,
+# no code rewrites (UP), no bugbear speculation (B). Expand later once the
+# team is comfortable with the tool.
+#   E -- pycodestyle errors (indentation, whitespace around operators)
+#   F -- pyflakes (unused imports, undefined names, redefined names)
+#   I -- isort (import ordering)
+select = ["E", "F", "I"]
